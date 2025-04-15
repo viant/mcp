@@ -11,7 +11,7 @@ import (
 
 // Operations represents implementation interface
 type Operations interface {
-	Initialize(ctx context.Context, init *schema.InitializeRequestParams)
+	Initialize(ctx context.Context, init *schema.InitializeRequestParams, result *schema.InitializeResult)
 
 	ListResources(ctx context.Context, request *schema.ListResourcesRequest) (*schema.ListResourcesResult, *jsonrpc.Error)
 

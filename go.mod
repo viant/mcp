@@ -5,7 +5,7 @@ go 1.23.4
 require (
 	github.com/stretchr/testify v1.9.0
 	github.com/viant/afs v1.25.1-0.20231110184132-877ed98abca1
-	github.com/viant/jsonrpc v0.1.0
+	github.com/viant/jsonrpc v0.2.0
 	github.com/viant/tagly v0.2.0
 )
 

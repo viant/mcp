@@ -19,7 +19,7 @@ type Base struct {
 	Subscription     *collection.SyncMap[string, bool]
 }
 
-func (f *Base) Initialize(ctx context.Context, init *schema.InitializeRequestParams) {
+func (f *Base) Initialize(ctx context.Context, init *schema.InitializeRequestParams, result schema.InitializeResult) {
 	f.ClientInitialize = init
 }
 
