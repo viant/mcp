@@ -6,6 +6,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/viant/afs v1.25.1-0.20231110184132-877ed98abca1
 	github.com/viant/jsonrpc v0.1.0
+	github.com/viant/tagly v0.2.0
 )
 
 require (
@@ -16,6 +17,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/viant/gosh v0.2.1 // indirect
+	github.com/viant/parsly v0.3.3-0.20240717150634-e1afaedb691b // indirect
 	github.com/viant/scy v0.15.4 // indirect
 	github.com/viant/toolbox v0.36.0 // indirect
 	github.com/viant/xreflect v0.6.2 // indirect

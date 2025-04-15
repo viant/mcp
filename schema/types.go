@@ -427,7 +427,6 @@ type CompleteRequest struct {
 	Params CompleteRequestParams `json:"params" yaml:"params" mapstructure:"params"`
 }
 
-
 type CompleteRequestParams struct {
 	// The argument's information
 	Argument CompleteRequestParamsArgument `json:"argument" yaml:"argument" mapstructure:"argument"`
@@ -2763,7 +2762,7 @@ func (j *ToolInputSchema) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-// A JSON Schema object defining the expected parameters for the tool.
+// A JSON InputSchema object defining the expected parameters for the tool.
 type ToolInputSchema struct {
 	// Properties corresponds to the JSON schema field "properties".
 	Properties ToolInputSchemaProperties `json:"properties,omitempty" yaml:"properties,omitempty" mapstructure:"properties,omitempty"`
@@ -3057,7 +3056,7 @@ type Tool struct {
 	// tools. It can be thought of like a "hint" to the model.
 	Description *string `json:"description,omitempty" yaml:"description,omitempty" mapstructure:"description,omitempty"`
 
-	// A JSON Schema object defining the expected parameters for the tool.
+	// A JSON InputSchema object defining the expected parameters for the tool.
 	InputSchema ToolInputSchema `json:"inputSchema" yaml:"inputSchema" mapstructure:"inputSchema"`
 
 	// The name of the tool.
@@ -3563,7 +3562,6 @@ func (j *UnsubscribeRequest) UnmarshalJSON(value []byte) error {
 	*j = UnsubscribeRequest(plain)
 	return nil
 }
-
 
 func NewImplementation(name string, version string) *Implementation {
 	return &Implementation{Name: name, Version: version}
