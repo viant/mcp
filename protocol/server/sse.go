@@ -11,11 +11,25 @@ type sseServer struct {
 }
 
 // HTTP return http server
-func (s *Server) HTTP(ctx context.Context, addr string) *http.Server {
+// HTTP creates and returns an HTTP server with OAuth2 auth and SSE handlers.
+func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
+	// SSE handler for JSON-RPC transport
 	s.sseHandler = sse.New(s.NewHandler)
-	server := http.Server{
-		Addr:    addr,
-		Handler: s.sseHandler,
+
+	mux := http.NewServeMux()
+	// register OAuth2 endpoints
+	if s.auth != nil {
+		s.auth.RegisterHandlers(mux)
 	}
-	return &server
+	// protect all other endpoints (SSE) with authorization middleware
+	if s.auth != nil {
+		mux.Handle("/", s.auth.Middleware(s.sseHandler))
+	} else {
+		mux.Handle("/", s.sseHandler)
+	}
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+	return server
 }

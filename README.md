@@ -94,6 +94,28 @@ func main() {
 }
 ```
 
+For servers enforcing authentication, configure the SSE transport with an HTTP client that injects the Bearer token:
+
+```go
+// authTransport adds the Authorization header to outgoing requests.
+// Customize the HTTP client's RoundTripper.
+type authTransport struct {
+   base  http.RoundTripper
+   token string
+}
+
+func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+   req.Header.Set("Authorization", "Bearer "+t.token)
+   return t.base.RoundTrip(req)
+}
+
+httpClient := &http.Client{Transport: &authTransport{base: http.DefaultTransport, token: "<ACCESS_TOKEN>"}}
+transport, err := sse.New(ctx, "http://localhost:4981/sse", sse.WithClient(httpClient))
+if err != nil {
+   log.Fatalf("Failed to create transport: %v", err)
+}
+```
+
 ### Creating a Client
 
 To connect to an MCP server:
@@ -164,7 +186,8 @@ import (
 	"github.com/viant/jsonrpc/transport"
 	"github.com/viant/mcp/implementer"
 	"github.com/viant/mcp/logger"
-	"github.com/viant/mcp/protocol/client"
+	"github.com/viant/gosh"
+   "github.com/viant/mcp/protocol/client"
 	"github.com/viant/mcp/protocol/server"
 	"github.com/viant/mcp/schema"
 )
@@ -172,6 +195,7 @@ import (
 type MyImplementer struct {
 	*implementer.Base
 	fs afs.Service
+	terminal *gosh.Service
 	// Add your custom fields here
 }
 
@@ -233,6 +257,85 @@ func (i *MyImplementer) ReadResource(ctx context.Context, request *schema.ReadRe
 	result.Contents = append(result.Contents, content)
 	return &result, nil
 }
+
+
+
+func (i *MyImplementer) ListTools(ctx context.Context, request *schema.ListToolsRequest) (*schema.ListToolsResult, *jsonrpc.Error) {
+  // Create a tool schema for the terminal command
+  var terminalSchema schema.ToolInputSchema
+  err := terminalSchema.Load(&TerminalCommand{})
+  if err != nil {
+    return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to create schema: %v", err), nil)
+  }
+
+  // Create the terminal tool
+  tools := []schema.Tool{
+    {
+      Name:        "terminal",
+      Description: func() *string { s := "Run terminal commands"; return &s }(),
+      InputSchema: terminalSchema,
+    },
+  }
+
+  return &schema.ListToolsResult{
+    Tools: tools,
+  }, nil
+}
+
+type TerminalCommand struct {
+  Commands []string          `json:"commands"`
+  Evn      map[string]string `json:"evn"`
+}
+
+func (i *MyImplementer) CallTool(ctx context.Context, request *schema.CallToolRequest) (*schema.CallToolResult, *jsonrpc.Error) {
+  if request.Params.Name != "terminal" {
+    return nil, jsonrpc.NewMethodNotFound(fmt.Sprintf("tool %v not found", request.Params.Name), nil)
+  }
+
+  var command TerminalCommand
+  data, err := json.Marshal(request.Params.Arguments)
+  if err != nil {
+    return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to marshal arguments: %v", err), nil)
+  }
+
+  if err := json.Unmarshal(data, &command); err != nil {
+    return nil, jsonrpc.NewInternalError(fmt.Sprintf("invalid arguments: %v", err), nil)
+  }
+
+  // Convert commands to a single string command
+  cmdString := ""
+  if len(command.Commands) > 0 {
+    cmdString = command.Commands[0]
+    for i := 1; i < len(command.Commands); i++ {
+      cmdString += " && " + command.Commands[i]
+    }
+  }
+
+  // Run the command
+  output, _, err := i.term.Run(ctx, cmdString)
+  if err != nil {
+    isError := true
+    return &schema.CallToolResult{
+      Content: []schema.CallToolResultContentElem{
+        {
+          Type: "text",
+          Text: fmt.Sprintf("Error: %v", err),
+        },
+      },
+      IsError: &isError,
+    }, nil
+  }
+
+  return &schema.CallToolResult{
+    Content: []schema.CallToolResultContentElem{
+      {
+        Type: "text",
+        Text: output,
+      },
+    },
+  }, nil
+}
+
 
 func (i *MyImplementer) Implements(method string) bool {
 	switch method {
@@ -300,7 +403,134 @@ MCP supports the following Client Side methods:
 
 ## Authentication
 
-Work in progress
+### OAuth 2.1 Authorization Code Flow with PKCE for MCP
+
+https://modelcontextprotocol.io/specification/draft/basic/authorization
+
+1. Initial Unauthorized Request: The client accesses the MCP resource without a token and receives a 401 Unauthorized with a WWW-Authenticate header pointing to metadata (.well-known/oauth-protected-resource).
+
+2. Resource Metadata Discovery: The client fetches the .well-known/oauth-protected-resource document, learning which Authorization Server(s) are trusted.
+
+3. Authorization Server Metadata Discovery: Using the metadata, the client fetches the .well-known/oauth-authorization-server document to get the auth and token endpoints.
+
+4. User Login with PKCE (OAuth 2.1 Authorization): The client redirects the user to log in, using the PKCE-enhanced Authorization Code flow.
+
+5. Token Request and Response: After the user authorizes, the client exchanges the code for an access token.
+
+6. Authorized Request to MCP: The client retries the protected request, now with a Bearer token in the Authorization header.
+
+7. Successful Resource Response: If the token is valid, the MCP server responds with the requested resource.
+
+The flow adheres to RFC 9728 and RFC 8414, ensuring standards-based integration with identity providers
+
+
+#### HTTP/SSE MCP Server - Global Protected Resource
+
+```go
+package main
+
+import (
+  "context"
+  "github.com/viant/mcp/protocol/server"
+  "github.com/viant/mcp/protocol/server/auth"
+  "github.com/viant/mcp/schema"
+)
+
+func ServerAuthUsage() error {
+
+  var implemener *MyImplementer
+  var options = []server.Option{
+    server.WithAuthConfig(&auth.Config{
+      ExcludeURI: "/sse",  //experimental initial SSE GET request is not protected as it's open all the time, there would be not way to refresh token, all POST are protected
+      Global: &meta.ProtectedResourceMetadata{
+        Resource: "https://me",
+        AuthorizationServers: []string{
+          "https://oauth.example.com/",
+        },
+      },
+    }),
+    server.WithNewImplementer(newImplementer),
+    server.WithImplementation(schema.Implementation{"MCP Terminal", "0.1"}),
+    server.WithCapabilities(schema.ServerCapabilities{
+      Resources: &schema.ServerCapabilitiesResources{},
+    }),
+  }
+  srv, err := server.New(options...)
+  if err != nil {
+    return err
+  }
+  ctx := context.Background()
+  endpoint := srv.HTTP(ctx, ":80")
+  return endpoint.ListenAndServe()
+}
+
+```
+
+
+#### HTTP/SSE MCP Client - Global Protected Resource
+
+
+### Usage
+
+Below is a simple example demonstrating how to wire the OAuth2 components into an MCP client.
+
+```go
+package main
+import (
+    "context"
+    "net/http"
+    "github.com/viant/jsonrpc/transport/client/http/sse"
+    "github.com/viant/mcp/protocol/client/auth/flow"
+    "github.com/viant/mcp/protocol/client/auth/mock"
+    "github.com/viant/mcp/protocol/client/auth/store"
+    "github.com/viant/mcp/protocol/client/auth/transport"
+    "github.com/viant/mcp/protocol/client"
+    "github.com/viant/mcp/schema"
+)
+
+func ExampleOAuth2Client() {
+    ctx := context.Background()
+
+
+    issuer := "http://oauth.example.com"
+    oAuth2Client := client.NewConfig("client_id", "client_secret", oauth2.Endpoint{
+    AuthURL:   url.Join(issuer, "authorize"),
+    TokenURL:  url.Join(issuer, "token"),
+    AuthStyle: oauth2.AuthStyleInHeader,
+    }, "read", "write")
+	
+// 1. Create an in-memory store with client credentials.
+    aStore := store.NewMemoryStore(store.WithClient(oAuth2Client))
+
+    // 2. Build an OAuth2-enabled RoundTripper using the Browser flow.
+    rt, err := transport.New(
+        transport.WithStore(aStore),
+        transport.WithAuthFlow(flow.NewBrowserFlow()),
+    )
+    if err != nil {
+        // handle error
+    }
+
+    // 3. Use the RoundTripper in a standard HTTP client.
+    httpClient := &http.Client{Transport: rt}
+
+    // 4. Create an SSE transport that uses the OAuth2-enabled HTTP client.
+    sseTransport, err := sse.New(ctx, "http://mcpserver/sse", sse.WithRPCHTTPClient(httpClient))
+    if err != nil {
+        // handle error
+    }
+    // 5. Instantiate the MCP client with the SSE transport.
+    aClient := client.New("tester", "0.1", sseTransport, client.WithCapabilities(schema.ClientCapabilities{}))
+
+    // 6. Use the client as usual; transport handles 401→OAuth2 flow automatically.
+    initResult, err := aClient.Initialize(ctx)
+    _ = initResult // use initialization result
+    // ... further calls, e.g. aClient.ListTools(ctx, nil)
+}
+```
+
+
+
 
 
 ## Contributing

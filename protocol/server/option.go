@@ -1,6 +1,9 @@
 package server
 
-import "github.com/viant/mcp/schema"
+import (
+	"github.com/viant/mcp/protocol/server/auth"
+	"github.com/viant/mcp/schema"
+)
 
 // Option is a function that configures the server.
 type Option func(s *Server)
@@ -9,6 +12,13 @@ type Option func(s *Server)
 func WithCapabilities(capabilities schema.ServerCapabilities) Option {
 	return func(s *Server) {
 		s.capabilities = capabilities
+	}
+}
+
+// WithAuthConfig sets the authentication server configuration.
+func WithAuthConfig(config *auth.Config) Option {
+	return func(s *Server) {
+		s.auth = auth.MustNewAuthServer(config)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/viant/jsonrpc/transport"
 	"github.com/viant/mcp/internal/collection"
+	"github.com/viant/mcp/protocol/server/auth"
 	"github.com/viant/mcp/schema"
 )
 
@@ -18,6 +19,8 @@ type Server struct {
 	protocolVersion string
 	loggerName      string
 	meta            map[string]interface{}
+	// auth handles OAuth2 authorization for incoming requests
+	auth *auth.AuthServer
 	stdioServer
 	sseServer
 }
@@ -47,6 +50,7 @@ func (s *Server) newHandler(ctx context.Context, transport transport.Transport) 
 
 // New creates a new Server instance
 func New(options ...Option) (*Server, error) {
+	// initialize server
 	s := &Server{
 		capabilities: schema.ServerCapabilities{},
 		info: schema.Implementation{
