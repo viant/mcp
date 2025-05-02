@@ -96,27 +96,6 @@ func main() {
 }
 ```
 
-For servers enforcing authentication, configure the SSE transport with an HTTP client that injects the Bearer token:
-
-```go
-// authTransport adds the Authorization header to outgoing requests.
-// Customize the HTTP client's RoundTripper.
-type authTransport struct {
-   base  http.RoundTripper
-   token string
-}
-
-func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-   req.Header.Set("Authorization", "Bearer "+t.token)
-   return t.base.RoundTrip(req)
-}
-
-httpClient := &http.Client{Transport: &authTransport{base: http.DefaultTransport, token: "<ACCESS_TOKEN>"}}
-transport, err := sse.New(ctx, "http://localhost:4981/sse", sse.WithClient(httpClient))
-if err != nil {
-   log.Fatalf("Failed to create transport: %v", err)
-}
-```
 
 ### Creating a Client
 
