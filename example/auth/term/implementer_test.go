@@ -24,18 +24,19 @@ import (
 
 func TestNew(t *testing.T) {
 	go func() {
-		err := startServer()
-		if err != nil {
-			t.Error(err)
-		}
-	}()
-	go func() {
 		err := startAuthorizer()
 		if err != nil {
 			t.Error(err)
 		}
 	}()
-	time.Sleep(time.Second)
+	go func() {
+		err := startServer()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	time.Sleep(2 * time.Second)
 	err := runClient(t)
 	assert.Nil(t, err)
 }
@@ -80,7 +81,7 @@ func startAuthorizer() error {
 	}
 	mockService.Issuer = "http://localhost:8089"
 	aServer := http.Server{}
-	aServer.Addr = ":8089"
+	aServer.Addr = "localhost:8089"
 	aServer.Handler = mockService.Handler()
 	return aServer.ListenAndServe()
 
@@ -96,11 +97,11 @@ func startServer() error {
 	var options = []server.Option{
 		server.WithAuthConfig(&schema.AuthConfig{
 			ExcludeURI: "/sse",
-			Global: &meta.ProtectedResourceMetadata{
+			Global: &schema.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
 				Resource: "http://localhost:4981",
 				AuthorizationServers: []string{
 					"http://localhost:8089/",
-				},
+				}},
 			},
 		}),
 		server.WithNewImplementer(newImplementer),

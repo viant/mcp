@@ -93,20 +93,19 @@ func (r *RoundTripper) TokenForPRM(ctx context.Context, resourceMetadata *meta.P
 	authServers := resourceMetadata.AuthorizationServers
 	issuer := authServers[rnd.Intn(len(authServers))]
 	authorizationServerMetadata, _ := r.store.LookupAuthorizationServerMetadata(issuer)
+	var err error
 	if authorizationServerMetadata == nil {
-		return nil, fmt.Errorf("authorization server metadata not found for issuer %s", issuer)
+		authorizationServerMetadata, err = meta.FetchAuthorizationServerMetadata(ctx, issuer, &http.Client{Transport: r.transport})
+		if err != nil {
+			return nil, err
+		}
+		err = r.store.AddAuthorizationServerMetadata(authorizationServerMetadata)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	//resourceMetadata.ScopesSupported
-
-	authorizationServerMetadata, err := meta.FetchAuthorizationServerMetadata(ctx, issuer, &http.Client{Transport: r.transport})
-	if err != nil {
-		return nil, err
-	}
-	err = r.store.AddAuthorizationServerMetadata(authorizationServerMetadata)
-	if err != nil {
-		return nil, err
-	}
 
 	scope := getScope(ctx)
 	tokenKey := store.TokenKey{authorizationServerMetadata.Issuer, scope}
