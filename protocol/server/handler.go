@@ -7,6 +7,7 @@ import (
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
 	"github.com/viant/mcp/internal/conv"
+	"github.com/viant/mcp/protocol/server/auth"
 	"github.com/viant/mcp/schema"
 )
 
@@ -18,6 +19,7 @@ type Handler struct {
 	clientInitialize *schema.InitializeRequestParams
 	loggingLevel     schema.LoggingLevel
 	implementer      Implementer
+	authorizer       auth.Authorizer
 	initialized      bool
 }
 
@@ -28,6 +30,7 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 		response.Error = jsonrpc.NewInvalidRequest("invalid JSON-RPC version", nil)
 		return
 	}
+
 	switch request.Method {
 	case schema.MethodInitialize, schema.MethodPing:
 	case schema.MethodLoggingSetLevel:
@@ -49,8 +52,18 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	id := conv.AsInt(request.Id)
 	ctx, cancel := context.WithCancel(parent)
 	activeContext, ctx := newActiveContext(ctx, cancel, request)
+
+	if h.authorizer != nil && request.Method != "" {
+		cred := h.authorizer(request, response)
+		if response.Error != nil {
+			return
+		}
+		ctx = context.WithValue(ctx, schema.AuthTokenKey, cred)
+	}
+
 	h.activeContexts.Put(id, activeContext)
 	defer h.cancelOperation(id)
+
 	switch request.Method {
 	case schema.MethodInitialize:
 		result, err := h.Initialize(ctx, request)

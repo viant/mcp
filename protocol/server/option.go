@@ -16,7 +16,7 @@ func WithCapabilities(capabilities schema.ServerCapabilities) Option {
 }
 
 // WithAuthConfig sets the authentication server configuration.
-func WithAuthConfig(config *auth.Config) Option {
+func WithAuthConfig(config *schema.AuthConfig) Option {
 	return func(s *Server) {
 		s.auth = auth.MustNewAuthServer(config)
 	}

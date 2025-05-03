@@ -16,7 +16,6 @@ import (
 	"github.com/viant/mcp/protocol/client/auth/store"
 	"github.com/viant/mcp/protocol/client/auth/transport"
 	"github.com/viant/mcp/protocol/server"
-	"github.com/viant/mcp/protocol/server/auth"
 	"github.com/viant/mcp/schema"
 	"net/http"
 	"testing"
@@ -95,7 +94,7 @@ func startServer() error {
 	}
 	var newImplementer = New(goshService)
 	var options = []server.Option{
-		server.WithAuthConfig(&auth.Config{
+		server.WithAuthConfig(&schema.AuthConfig{
 			ExcludeURI: "/sse",
 			Global: &meta.ProtectedResourceMetadata{
 				Resource: "http://localhost:4981",

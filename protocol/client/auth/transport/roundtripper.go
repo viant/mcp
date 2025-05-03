@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/mcp/protocol/client/auth/client"
 	flow2 "github.com/viant/mcp/protocol/client/auth/flow"
-	meta2 "github.com/viant/mcp/protocol/client/auth/meta"
+	meta "github.com/viant/mcp/protocol/client/auth/meta"
 	"github.com/viant/mcp/protocol/client/auth/store"
 	"golang.org/x/oauth2"
 	"math/rand"
@@ -80,16 +80,39 @@ func (r *RoundTripper) Token(ctx context.Context) (*oauth2.Token, error) {
 	if !ok {
 		return nil, errors.New("authServer discovery needs request URL in context")
 	}
-	scope := getScope(ctx)
-	var err error
-	authServerMetadata, err := r.discoverAuthorizationServer(ctx, reqURL)
+
+	authServerMetadata, err := r.loadProtectedResourceMetadata(ctx, reqURL)
 	if err != nil {
 		return nil, err
 	}
-	tokenKey := store.TokenKey{authServerMetadata.Issuer, scope}
-	clientConfig, ok := r.store.LookupClientConfig(authServerMetadata.Issuer)
+	return r.TokenForPRM(ctx, authServerMetadata)
+}
+
+func (r *RoundTripper) TokenForPRM(ctx context.Context, resourceMetadata *meta.ProtectedResourceMetadata) (*oauth2.Token, error) {
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+	authServers := resourceMetadata.AuthorizationServers
+	issuer := authServers[rnd.Intn(len(authServers))]
+	authorizationServerMetadata, _ := r.store.LookupAuthorizationServerMetadata(issuer)
+	if authorizationServerMetadata == nil {
+		return nil, fmt.Errorf("authorization server metadata not found for issuer %s", issuer)
+	}
+
+	//resourceMetadata.ScopesSupported
+
+	authorizationServerMetadata, err := meta.FetchAuthorizationServerMetadata(ctx, issuer, &http.Client{Transport: r.transport})
+	if err != nil {
+		return nil, err
+	}
+	err = r.store.AddAuthorizationServerMetadata(authorizationServerMetadata)
+	if err != nil {
+		return nil, err
+	}
+
+	scope := getScope(ctx)
+	tokenKey := store.TokenKey{authorizationServerMetadata.Issuer, scope}
+	clientConfig, ok := r.store.LookupClientConfig(authorizationServerMetadata.Issuer)
 	if !ok {
-		return nil, fmt.Errorf("client config not found for issuer %s", authServerMetadata.Issuer)
+		return nil, fmt.Errorf("client config not found for issuer %s", authorizationServerMetadata.Issuer)
 	}
 	// if we have a cached token, return it or try refresh if expired
 	if cached, _ := r.store.LookupToken(tokenKey); cached != nil {
@@ -99,7 +122,7 @@ func (r *RoundTripper) Token(ctx context.Context) (*oauth2.Token, error) {
 		if cached.RefreshToken != "" {
 			cached = r.refreshToken(ctx, clientConfig, cached)
 			if cached != nil {
-				if err = r.store.AddToken(tokenKey, cached); err != nil {
+				if err := r.store.AddToken(tokenKey, cached); err != nil {
 					return nil, fmt.Errorf("failed to store refreshed token: %v", err)
 				}
 				return cached, nil
@@ -133,7 +156,7 @@ func (r *RoundTripper) refreshToken(ctx context.Context, clientConfig *client.Co
 	return nil
 }
 
-func (r *RoundTripper) discoverAuthorizationServer(ctx context.Context, target *url.URL) (*meta2.AuthorizationServerMetadata, error) {
+func (r *RoundTripper) loadProtectedResourceMetadata(ctx context.Context, target *url.URL) (*meta.ProtectedResourceMetadata, error) {
 	// ❶ Send *exactly* the same request but without Authorization header.
 	probe := &http.Request{
 		Method: http.MethodGet, // use GET; HEAD may not trigger auth challenge
@@ -156,23 +179,5 @@ func (r *RoundTripper) discoverAuthorizationServer(ctx context.Context, target *
 	if err != nil {
 		return nil, err
 	}
-	resourceMetadata, err := meta2.FetchProtectedResourceMetadata(ctx, protectedResourceMetadataURL, &http.Client{Transport: r.transport})
-	if err != nil {
-		return nil, err
-	}
-
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	authServers := resourceMetadata.AuthorizationServers
-	issuer := authServers[rnd.Intn(len(authServers))]
-
-	authorizationServerMetadata, _ := r.store.LookupAuthorizationServerMetadata(issuer)
-	if authorizationServerMetadata != nil {
-		return authorizationServerMetadata, nil
-	}
-	authorizationServerMetadata, err = meta2.FetchAuthorizationServerMetadata(ctx, issuer, &http.Client{Transport: r.transport})
-	if err != nil {
-		return nil, err
-	}
-	err = r.store.AddAuthorizationServerMetadata(authorizationServerMetadata)
-	return authorizationServerMetadata, err
+	return meta.FetchProtectedResourceMetadata(ctx, protectedResourceMetadataURL, &http.Client{Transport: r.transport})
 }

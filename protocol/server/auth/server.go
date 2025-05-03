@@ -1,19 +1,25 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/viant/mcp/protocol/client/auth/transport"
+	"github.com/viant/mcp/schema"
 	"net/http"
 	"strings"
 )
 
 // AuthServer acts as a broker between clients and external OAuth2/OIDC providers.
 type AuthServer struct {
-	Config *Config
+	Config *schema.AuthConfig
+
+	//if this option is set, server will start oauth 2.1 flow itself (for case we want flexibility with stdio server)
+	RoundTripper *transport.RoundTripper
 }
 
 // NewAuthServer initializes an AuthServer with the given configuration.
-func NewAuthServer(config *Config) (*AuthServer, error) {
+func NewAuthServer(config *schema.AuthConfig) (*AuthServer, error) {
 	s := &AuthServer{
 		Config: config,
 	}
@@ -21,7 +27,7 @@ func NewAuthServer(config *Config) (*AuthServer, error) {
 }
 
 // MustNewAuthServer creates an AuthServer or panics if configuration is invalid.
-func MustNewAuthServer(config *Config) *AuthServer {
+func MustNewAuthServer(config *schema.AuthConfig) *AuthServer {
 	s, err := NewAuthServer(config)
 	if err != nil {
 		panic(err)
@@ -48,7 +54,9 @@ func (s *AuthServer) Middleware(next http.Handler) http.Handler {
 
 		auth := strings.TrimSpace(r.Header.Get("Authorization"))
 		if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
-			next.ServeHTTP(w, r)
+			token := &schema.AuthToken{Token: auth}
+			nextReq := r.WithContext(context.WithValue(r.Context(), schema.AuthTokenKey, token))
+			next.ServeHTTP(w, nextReq)
 			return
 		}
 		proto, host := extractProtoAndHost(r)
@@ -61,5 +69,5 @@ func (s *AuthServer) Middleware(next http.Handler) http.Handler {
 // protectedResourcesHandler serves the OAuth2 authorization server metadata document.
 func (s *AuthServer) protectedResourcesHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(s.Config.Global)
+	_ = json.NewEncoder(w).Encode(s.Config.Global.ProtectedResourceMetadata)
 }

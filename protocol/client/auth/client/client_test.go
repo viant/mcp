@@ -1,10 +1,10 @@
-package auth
+package client_test
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	client2 "github.com/viant/mcp/protocol/client/auth/client"
+	"github.com/viant/mcp/protocol/client/auth/client"
 	"github.com/viant/mcp/protocol/client/auth/flow"
 	"github.com/viant/mcp/protocol/client/auth/meta"
 	"github.com/viant/mcp/protocol/client/auth/mock"
@@ -65,7 +65,7 @@ func TestClientWithMockServer(t *testing.T) {
 	}
 
 	// Create client config
-	clientConfig := client2.NewConfig(
+	clientConfig := client.NewConfig(
 		mockServer.ClientID,
 		mockServer.ClientSecret,
 		oauth2.Endpoint{
@@ -201,7 +201,7 @@ func TestClientWithFullMockServer(t *testing.T) {
 	}
 
 	// Create client config
-	clientConfig := client2.NewConfig(
+	clientConfig := client.NewConfig(
 		mockServer.ClientID,
 		mockServer.ClientSecret,
 		oauth2.Endpoint{
@@ -304,7 +304,7 @@ func TestClientWithIDToken(t *testing.T) {
 	}
 
 	// Create client config with openid scope
-	clientConfig := client2.NewConfig(
+	clientConfig := client.NewConfig(
 		mockServer.ClientID,
 		mockServer.ClientSecret,
 		oauth2.Endpoint{

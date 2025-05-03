@@ -32,7 +32,7 @@ For detailed guides on custom implementers and authentication, see [docs/impleme
 MCP is built around the following components:
 
 1. **Protocol**: Defines the communication format and methods
-2. **Server**: Handles incoming requests and dispatches to implementers
+2. **Server**: Handles incoming requests and dispatches to implementer
 3. **Client**: Makes requests to MCP-compatible servers
 4. **Implementer**: Provides the actual functionality behind each protocol method
 

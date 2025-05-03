@@ -49,6 +49,12 @@ type TerminalCommand struct {
 }
 
 func (i *Implementer) CallTool(ctx context.Context, request *schema.CallToolRequest) (*schema.CallToolResult, *jsonrpc.Error) {
+
+	token := ctx.Value(schema.AuthTokenKey)
+	if token != nil {
+		fmt.Printf("token: %+v\n", token)
+	}
+
 	if request.Params.Name != "terminal" {
 		return nil, jsonrpc.NewMethodNotFound(fmt.Sprintf("tool %v not found", request.Params.Name), nil)
 	}

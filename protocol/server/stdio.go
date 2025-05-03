@@ -13,3 +13,8 @@ type stdioServer struct {
 func (s *Server) Stdio(ctx context.Context) *stdio.Server {
 	return stdio.New(ctx, s.NewHandler, s.stdioServerOption...)
 }
+
+/*
+-32001 — no token provided, but the server expected one.
+-32003 — token present but invalid/insufficient (expired, missing scope, etc).
+*/

@@ -47,7 +47,68 @@ func main() {
 
 This configuration will:
 - Expose the OAuth2 metadata endpoint at `/.well-known/oauth-protected-resource`.
-- Protect all other endpoints (e.g., `/sse`, `/`) by requiring a valid Bearer token.
+- Protect all other endpoints (e.g., `/sse`, `/`) by requiring a valid Bearer token unless ExcludeURI is specified.
+
+
+## Accessing Token in Implementer
+
+When implementing MCP services, you can access the authentication token from the context in your implementer methods. The token is stored in the context using the `schema.AuthTokenKey` key and contains an instance of the `schema.AuthToken` struct.
+
+```go
+// Retrieve the token from the context
+tokenValue := ctx.Value(schema.AuthTokenKey)
+if tokenValue != nil {
+    // Cast to the AuthToken struct
+    authToken, ok := tokenValue.(schema.AuthToken)
+    if ok {
+        // Access the token string
+        tokenString := authToken.Token
+
+        // Use the token for authorization checks, logging, etc.
+        log.Printf("Request authenticated with token: %s", tokenString)
+
+        // You can also pass the token to other services
+        // or use it to make authorized requests to other APIs
+    }
+}
+```
+
+### Example: Using the Token in an Implementer Method
+
+Here's a complete example showing how to access and use the token in an implementer method:
+
+```go
+func (i *MyImplementer) CallTool(ctx context.Context, request *schema.CallToolRequest) (*schema.CallToolResult, *jsonrpc.Error) {
+    // Access the token from the context
+    tokenValue := ctx.Value(schema.AuthTokenKey)
+    if tokenValue != nil {
+        // You can log the token for debugging
+        authToken, ok := tokenValue.(schema.AuthToken)
+        if ok {
+            // Use the token for your implementation logic
+            // For example, you might want to validate permissions based on the token
+            if !hasPermission(authToken.Token, request.Params.Name) {
+                return nil, jsonrpc.NewError(schema.Unauthorized, "Insufficient permissions", nil)
+            }
+        }
+    }
+
+    // Continue with the implementation...
+    // ...
+
+    return &schema.CallToolResult{
+        // Result data
+    }, nil
+}
+
+// Helper function to check permissions based on the token
+func hasPermission(token, toolName string) bool {
+    // Implement your permission logic here
+    // This could involve decoding the JWT, checking claims, etc.
+    return true // Simplified for example
+}
+```
+
 
 ## Securing the MCP Client
 
