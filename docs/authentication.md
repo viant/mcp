@@ -122,7 +122,7 @@ func ExampleSpecBasedClient() {
     ctx := context.Background()
 
     // 1. Create OAuth2 config for the auth server
-    oauthConfig := &authorization.Config{
+    oauthConfig := &oauth2.Config{
         ClientID:     "clientID",
         ClientSecret: "clientSecret",
         Endpoint: oauth2.Endpoint{
@@ -210,7 +210,7 @@ func main() {
 }
 ```
 
-### Fallback Token Fetching (Optional)
+### Fallback Token Fetching (Optional, experimental)
 
 If you want the server to automatically fetch and retry with fresh tokens when clients don’t supply or send expired tokens, wrap your strict `AuthServer` with `FallbackAuth`:
 ```go
@@ -267,7 +267,8 @@ import (
 
 func main() {
     ctx := context.Background()
-	
+
+    clientConfig := &oauth2.Config{...}// OAuth2 client config
     store := store.NewMemoryStore(store.WithClientConfig(clientConfig))
     rt, err := transport.New(
         transport.WithStore(store),
@@ -378,7 +379,9 @@ import (
 func ExampleOAuth2Client() {
     ctx := context.Background()
 
-    // 1. Create an in-memory store with OAuth2 client credentials.
+    clientConfig := &oauth2.Config{...}// OAuth2 client config
+
+// 1. Create an in-memory store with OAuth2 client credentials.
     store := store.NewMemoryStore(store.WithClient(oauthConfig))
 
     // 2. Build an OAuth2-enabled RoundTripper using PKCE flow.
