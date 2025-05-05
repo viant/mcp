@@ -18,6 +18,12 @@ func (s *AuthServer) EnsureAuthorized(ctx context.Context, request *jsonrpc.Requ
 	if response.Error != nil {
 		return nil, nil
 	}
+
+	if s.Config.Global != nil {
+		s.unauthorized(response, s.Config.Global)
+		return nil, nil
+	}
+
 	var p authschema.WithMeta
 	// Parse the JSON-RPC params into the WithAuthMeta wrapper
 	if !schema.MustParseParams(request, response, &p) {
