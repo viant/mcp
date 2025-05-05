@@ -15,7 +15,7 @@ type NewImplementer func(
 ) server.Implementer
 ```
 
-Your implementer should embed `implementer.Base` to leverage common functionality and implement the methods corresponding to the MCP schema you need. Key methods include:
+Your implementer should embed `server.DefaultImplementer` to leverage common functionality and implement the methods corresponding to the MCP schema you need. Key methods include:
 - `ListResources` (`resources/list`)
 - `ReadResource` (`resources/read`)
 - `ListTools` (`tools/list`)
@@ -27,66 +27,88 @@ Your implementer should embed `implementer.Base` to leverage common functionalit
 package myimplementer
 
 import (
-    "context"
-    "github.com/viant/jsonrpc"
-    "github.com/viant/jsonrpc/transport"
-    "github.com/viant/mcp/implementer"
-    "github.com/viant/mcp/logger"
-    "github.com/viant/mcp/protocol/server"
-    "github.com/viant/mcp/schema"
+"context"
+"github.com/viant/jsonrpc"
+"github.com/viant/jsonrpc/transport"
+"github.com/viant/mcp-protocol/client"
+"github.com/viant/mcp-protocol/logger"
+"github.com/viant/mcp-protocol/schema"
+"github.com/viant/mcp-protocol/server"
 )
 
 // MyImplementer implements the MCP protocol methods.
+// Embed DefaultImplementer for common behavior.
 type MyImplementer struct {
-    *implementer.Base
-    // Add your custom fields here
+	*server.DefaultImplementer
+	// Add your custom fields here
 }
 
 // ListResources lists available resources.
 func (i *MyImplementer) ListResources(
-    ctx context.Context,
-    req *schema.ListResourcesRequest,
+	ctx context.Context,
+	req *schema.ListResourcesRequest,
 ) (*schema.ListResourcesResult, *jsonrpc.Error) {
-    // Implement resource listing
-    return &schema.ListResourcesResult{Resources: nil}, nil
+	// Implement resource listing
+	return &schema.ListResourcesResult{Resources: nil}, nil
 }
 
 // Implements indicates which methods are supported.
 func (i *MyImplementer) Implements(method string) bool {
-    switch method {
-    case schema.MethodResourcesList:
-        return true
-    }
-    return false
+	switch method {
+	case schema.MethodResourcesList:
+		return true
+	}
+	return i.DefaultImplementer.Implements(method) //delegate to DefaultImplementer
 }
 
 // New returns a factory for MyImplementer.
 func New() server.NewImplementer {
-    return func(
-        ctx context.Context,
-        notifier transport.Notifier,
-        logger logger.Logger,
-        client client.Operations,
-    ) server.Implementer {
-        base := implementer.New(notifier, logger, client)
-        return &MyImplementer{Base: base}
-    }
+	return func(
+		ctx context.Context,
+		notifier transport.Notifier,
+		logger logger.Logger,
+		client client.Operations,
+	) server.Implementer {
+		base := server.NewDefaultImplementer(notifier, logger, client)
+		return &MyImplementer{DefaultImplementer: base}
+	}
 }
+
 ```
 
-## Example: Filesystem Implementer
-The `example/fs` package provides a complete filesystem-based implementer using Go embed. To use:
+## Example: Comprehensive Custom Implementer
+Use the `example/custom` package for a more advanced implementer with polling, notifications, and resource watching:
 ```go
-config := &fs.Config{
-    BaseURL: "embed:///resources",
-    Options: []storage.Option{resourceFS},
-}
-newImplementer := fs.New(config)
-srv, _ := server.New(
-    server.WithNewImplementer(newImplementer),
-    server.WithImplementation(schema.Implementation{"MyMCP", "1.0"}),
-    server.WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
+package main
+
+import (
+    "context"
+    "embed"
+    "log"
+
+    "github.com/viant/afs/storage"
+    "github.com/viant/mcp/example/custom"
+    "github.com/viant/mcp/server"
+    "github.com/viant/mcp-protocol/schema"
 )
-httpSrv := srv.HTTP(context.Background(), ":4981")
-log.Fatal(httpSrv.ListenAndServe())
+
+//go:embed data/*
+var embedFS embed.FS
+
+func main() {
+    config := &custom.Config{
+        BaseURL: "embed://data",
+        Options: []storage.Option{embedFS},
+    }
+    newImplementer := custom.New(config)
+    srv, err := server.New(
+        server.WithNewImplementer(newImplementer),
+        server.WithImplementation(schema.Implementation{"custom", "1.0"}),
+        server.WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
+    )
+    if err != nil {
+        log.Fatalf("Failed to create server: %v", err)
+    }
+    log.Fatal(srv.HTTP(context.Background(), ":4981").ListenAndServe())
+}
 ```

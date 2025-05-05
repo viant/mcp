@@ -1,2 +1,3 @@
 .idea/
+.build/
 local_test.go
