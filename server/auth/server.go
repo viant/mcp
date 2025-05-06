@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	authschema "github.com/viant/mcp-protocol/authorization"
+	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp/client/auth/transport"
 	"net/http"
 	"strings"
@@ -13,14 +13,14 @@ import (
 // AuthServer acts as a broker between clients and external OAuth2/OIDC providers.
 type AuthServer struct {
 	// Config holds the OAuth2 protection settings; use Global or Tools for spec-based or experimental modes.
-	Config *authschema.Config
+	Config *authorization.Config
 
 	//if this option is set, server will start oauth 2.1 flow itself (for case we want flexibility with stdio server)
 	RoundTripper *transport.RoundTripper
 }
 
 // NewAuthServer initializes an AuthServer with the given configuration.
-func NewAuthServer(config *authschema.Config) (*AuthServer, error) {
+func NewAuthServer(config *authorization.Config) (*AuthServer, error) {
 	s := &AuthServer{
 		Config: config,
 	}
@@ -28,7 +28,7 @@ func NewAuthServer(config *authschema.Config) (*AuthServer, error) {
 }
 
 // MustNewAuthServer creates an AuthServer or panics if configuration is invalid.
-func MustNewAuthServer(config *authschema.Config) *AuthServer {
+func MustNewAuthServer(config *authorization.Config) *AuthServer {
 	s, err := NewAuthServer(config)
 	if err != nil {
 		panic(err)
@@ -56,8 +56,8 @@ func (s *AuthServer) Middleware(next http.Handler) http.Handler {
 		auth := strings.TrimSpace(r.Header.Get("Authorization"))
 		if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 			// Successful bearer token provided -> pass through
-			token := &authschema.Token{Token: auth}
-			nextReq := r.WithContext(context.WithValue(r.Context(), authschema.TokenKey, token))
+			token := &authorization.Token{Token: auth}
+			nextReq := r.WithContext(context.WithValue(r.Context(), authorization.TokenKey, token))
 			next.ServeHTTP(w, nextReq)
 			return
 		}

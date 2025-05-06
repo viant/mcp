@@ -36,49 +36,7 @@ Follow the standard OAuth 2.1 Authorization Code Flow with PKCE. The server trea
 
 Use `server.WithAuthConfig` when creating your MCP server to enable OAuth2 protection.
 
-#### Quick Start: Default Implementer with OAuth2
-```go
-package main
 
-import (
-    "context"
-    "log"
-    "github.com/viant/jsonrpc"
-    serverproto "github.com/viant/mcp-protocol/server"
-    "github.com/viant/mcp/server"
-    "github.com/viant/mcp/server/auth"
-    "github.com/viant/mcp-protocol/authorization"
-    meta "github.com/viant/mcp-protocol/oauth2/meta"
-    "github.com/viant/mcp-protocol/schema"
-)
-
-func main() {
-    // Initialize default implementer (no custom methods registered here)
-    newImplementer := serverproto.WithDefaultImplementer(context.Background(), nil)
-
-    // Configure OAuth2 protection
-    authCfg := &authorization.Config{
-        ExcludeURI: "/sse",
-        Global: &meta.ProtectedResourceMetadata{
-            Resource:             "https://myapp.example.com",
-            AuthorizationServers: []string{"https://auth.example.com/"},
-        },
-    }
-
-    // Create MCP server with auth and default implementer
-    srv, err := server.New(
-        server.WithAuthConfig(authCfg),
-        server.WithNewImplementer(newImplementer),
-        server.WithImplementation(schema.Implementation{"secured", "1.0"}),
-        server.WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
-    )
-    if err != nil {
-        log.Fatalf("Failed to create server: %v", err)
-    }
-
-    log.Fatal(srv.HTTP(context.Background(), ":8080").ListenAndServe())
-}
-```
 #### OAuth2 RoundTripper Options
 
 When initializing the OAuth2 RoundTripper via `transport.New`, you can customize behavior with options:

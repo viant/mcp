@@ -28,8 +28,9 @@ func (r *RoundTripper) IdToken(ctx context.Context, token *oauth2.Token, resourc
 		return nil, errors.New("failed to get identity token")
 	}
 	keys, ok := r.store.LookupIssuerPublicKeys(metadata.Issuer)
+	var err error
 	if !ok {
-		keys, err := meta.FetchJSONWebKeySet(ctx, metadata.JSONWebKeySetURI, &http.Client{Transport: r.transport})
+		keys, err = meta.FetchJSONWebKeySet(ctx, metadata.JSONWebKeySetURI, &http.Client{Transport: r.transport})
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch JSON Web Key Set: %w", err)
 		}

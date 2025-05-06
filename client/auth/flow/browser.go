@@ -44,9 +44,12 @@ func (s *BrowserFlow) Token(ctx context.Context, config *oauth2.Config, options 
 		return nil, fmt.Errorf("failed to find auth code")
 	}
 
+	scopes := append(config.Scopes, opts.scopes...)
+
 	tkn, err := config.Exchange(ctx, code,
-		oauth2.SetAuthURLParam("scope", strings.Join(opts.scopes, ",")),
+		oauth2.SetAuthURLParam("scope", strings.Join(scopes, " ")),
 		oauth2.SetAuthURLParam("state", opts.State()),
+		oauth2.SetAuthURLParam("redirect_uri", redirectURL),
 		oauth2.SetAuthURLParam("grant_type", "authorization_code"),
 		oauth2.SetAuthURLParam("code_verifier", opts.codeVerifier),
 	)

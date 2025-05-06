@@ -14,7 +14,6 @@ type Authorizer func(ctx context.Context, request *jsonrpc.Request, response *js
 
 // EnsureAuthorized checks if a request is authorized.
 func (s *AuthServer) EnsureAuthorized(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) (*authschema.Token, error) {
-
 	if response.Error != nil {
 		return nil, nil
 	}

@@ -21,12 +21,12 @@ func (a *FallbackAuth) EnsureAuthorized(ctx context.Context, request *jsonrpc.Re
 	if token != nil {
 		return token, nil
 	}
-	if response.Error == nil || response.Error.Code != schema.Unauthorized {
+	if response.Error == nil || response.Error.Code != schema.Unauthorized || response.Error.Data == nil {
 		return nil, nil
 	}
 
 	var anAuthorization authorization.Authorization
-	if err = json.Unmarshal(response.Result, &anAuthorization); err != nil {
+	if err = json.Unmarshal(response.Error.Data, &anAuthorization); err != nil {
 		return nil, err
 	}
 	oToken, err := a.TokenSource.ProtectedResourceToken(ctx, anAuthorization.ProtectedResourceMetadata, strings.Join(anAuthorization.RequiredScopes, " "))
@@ -44,12 +44,13 @@ func (a *FallbackAuth) EnsureAuthorized(ctx context.Context, request *jsonrpc.Re
 	token = &authorization.Token{
 		Token: tokenString,
 	}
+	response.Error = nil
 	return token, nil
 }
 
-func NewFallbackAuth(transport *AuthServer, tokenSource authorization.ProtectedResourceTokenSource, idTokenSource authorization.IdTokenSource) *FallbackAuth {
+func NewFallbackAuth(authServer *AuthServer, tokenSource authorization.ProtectedResourceTokenSource, idTokenSource authorization.IdTokenSource) *FallbackAuth {
 	return &FallbackAuth{
-		Strict:        transport,
+		Strict:        authServer,
 		TokenSource:   tokenSource,
 		IdTokenSource: idTokenSource,
 	}
