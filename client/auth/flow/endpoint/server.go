@@ -94,6 +94,6 @@ func New() (*Server, error) {
 		IdleTimeout:  30 * time.Second,
 	}
 
-	log.Printf("OAuth callback server started on port %d", result.Port)
+	//log.Printf("OAuth callback server started on port %d", result.Port)
 	return result, nil
 }

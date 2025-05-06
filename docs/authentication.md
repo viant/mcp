@@ -270,7 +270,7 @@ if tokenValue != nil {
         tokenString := authToken.Token
 
         // Use the token for authorization checks, logging, etc.
-        log.Printf("Request authenticated with token: %s", tokenString)
+       // log.Printf("Request authenticated with token: %s", tokenString)
 
         // You can also pass the token to other services
         // or use it to make authorized requests to other APIs

@@ -20,14 +20,14 @@ type httpHandler struct {
 
 // handle processes an individual HTTP request
 func (h *httpHandler) handle(writer http.ResponseWriter, request *http.Request) {
-	log.Printf("Received callback request: %s", request.URL.String())
+	//	log.Printf("Received callback request: %s", request.URL.String())
 
 	if err := request.ParseForm(); err == nil {
 		h.values = request.Form
 
 		// Log the received callback data (except sensitive info)
-		log.Printf("Received code: %v", h.values.Get("code") != "")
-		log.Printf("Received state: %v", h.values.Get("state"))
+		////log.Printf("Received code: %v", h.values.Get("code") != "")
+		//log.Printf("Received state: %v", h.values.Get("state"))
 
 		if h.values.Get("error") != "" {
 			log.Printf("Error in callback: %s - %s",
