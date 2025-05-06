@@ -8,7 +8,7 @@ require (
 	github.com/viant/afs v1.25.1-0.20231110184132-877ed98abca1
 	github.com/viant/gosh v0.2.1
 	github.com/viant/jsonrpc v0.5.0
-	github.com/viant/mcp-protocol v0.1.0
+	github.com/viant/mcp-protocol v0.1.1-0.20250506163353-0c9e9ec52598
 	golang.org/x/oauth2 v0.28.0
 )
 
