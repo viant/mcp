@@ -37,6 +37,19 @@ MCP is built around the following components:
 3. **Client**: Makes requests to MCP-compatible servers
 4. **Implementer**: Provides the actual functionality behind each protocol method
 
+### High-Level Architecture
+
+```mermaid
+graph LR
+    Client[MCP Client] -->|JSON-RPC / HTTP/SSE| Server[MCP Server]
+    Server -->|Dispatches to| Implementer[MCP Implementer]
+    subgraph Auth[Authentication / Authorization]
+      OAuth2[OAuth2 / OIDC]
+    end
+    Client -.->|Bearer Token| OAuth2
+    Server -.->|Token Validation| OAuth2
+```
+
 ## Getting Started
 
 ### Installation
