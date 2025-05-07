@@ -4,30 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/viant/jsonrpc"
 	"github.com/viant/mcp-protocol/authorization"
+	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/client/auth/transport"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
 // AuthServer acts as a broker between clients and external OAuth2/OIDC providers.
 type AuthServer struct {
-	// Policy holds the OAuth2 protection settings; use Global or Tools for spec-based or experimental modes.
-	Policy *authorization.Policy
-
-	//if this option is set, server will start oauth 2.1 flow itself (for case we want flexibility with stdio server)
+	Policy       *authorization.Policy
 	RoundTripper *transport.RoundTripper
 }
 
-// NewAuthServer initializes an AuthServer with the given configuration.
 func NewAuthServer(policy *authorization.Policy) (*AuthServer, error) {
-	s := &AuthServer{
-		Policy: policy,
-	}
-	return s, nil
+	return &AuthServer{Policy: policy}, nil
 }
 
-// MustNewAuthServer creates an AuthServer or panics if configuration is invalid.
 func MustNewAuthServer(policy *authorization.Policy) *AuthServer {
 	s, err := NewAuthServer(policy)
 	if err != nil {
@@ -36,40 +32,117 @@ func MustNewAuthServer(policy *authorization.Policy) *AuthServer {
 	return s
 }
 
-// RegisterHandlers registers HTTP handlers for OAuth2 endpoints onto the given ServeMux.
 func (s *AuthServer) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/.well-known/oauth-protected-resource", s.protectedResourcesHandler)
 }
 
-// Middleware wraps a handler to enforce bearer-token authorization.
 func (s *AuthServer) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.Policy.Global == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if s.Policy.ExcludeURI != "" && strings.HasPrefix(r.URL.Path, s.Policy.ExcludeURI) {
+		if s.shouldBypass(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		auth := strings.TrimSpace(r.Header.Get("Authorization"))
-		if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
-			// Successful bearer token provided -> pass through
-			token := &authorization.Token{Token: auth}
-			nextReq := r.WithContext(context.WithValue(r.Context(), authorization.TokenKey, token))
-			next.ServeHTTP(w, nextReq)
+		data, jRequest, err := s.extractJSONRPCRequest(r)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		proto, host := extractProtoAndHost(r)
-		metaURL := fmt.Sprintf("%s://%s/.well-known/oauth-protected-resource", proto, host)
-		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s"`, metaURL))
-		w.WriteHeader(http.StatusUnauthorized)
+
+		r.Body = io.NopCloser(strings.NewReader(string(data)))
+
+		authRule, resourceURI := s.resolveAuthorizationRule(jRequest)
+		if authRule == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		s.handleAuthorization(w, r, next, resourceURI, authRule)
 	})
 }
 
-// protectedResourcesHandler serves the OAuth2 authorization server metadata document.
-func (s *AuthServer) protectedResourcesHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *AuthServer) shouldBypass(r *http.Request) bool {
+	return (s.Policy.ExcludeURI != "" && strings.HasPrefix(r.URL.Path, s.Policy.ExcludeURI)) || r.Method != http.MethodPost
+}
+
+func (s *AuthServer) extractJSONRPCRequest(r *http.Request) ([]byte, *jsonrpc.Request, error) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer r.Body.Close()
+
+	jRequest := &jsonrpc.Request{}
+	if err := json.Unmarshal(data, jRequest); err != nil {
+		return nil, nil, err
+	}
+	return data, jRequest, nil
+}
+
+func (s *AuthServer) resolveAuthorizationRule(jRequest *jsonrpc.Request) (*authorization.Authorization, string) {
+	switch jRequest.Method {
+	case schema.MethodResourcesRead:
+		params := &schema.ReadResourceRequestParams{}
+		if err := json.Unmarshal(jRequest.Params, params); err == nil {
+			if rule, ok := s.Policy.Resources[params.Uri]; ok {
+				return rule, params.Uri
+			}
+		}
+	case schema.MethodToolsCall:
+		params := &schema.CallToolRequestParams{}
+		if err := json.Unmarshal(jRequest.Params, params); err == nil {
+			if rule, ok := s.Policy.Tools[params.Name]; ok {
+				return rule, "tool/" + params.Name
+			}
+		}
+	}
+	return s.Policy.Global, ""
+}
+
+func (s *AuthServer) handleAuthorization(w http.ResponseWriter, r *http.Request, next http.Handler, resourceURI string, rule *authorization.Authorization) {
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		token := &authorization.Token{Token: authHeader}
+		rWithToken := r.WithContext(context.WithValue(r.Context(), authorization.TokenKey, token))
+		next.ServeHTTP(w, rWithToken)
+		return
+	}
+	resourceQuery := ""
+	if resourceURI != "" {
+		resourceQuery = fmt.Sprintf("?resource=%s", resourceURI)
+	}
+
+	proto, host := extractProtoAndHost(r)
+	metaURL := fmt.Sprintf("%s://%s/.well-known/oauth-protected-resource%s", proto, host, resourceQuery)
+	scopePart := ""
+	if len(rule.RequiredScopes) > 0 {
+		scopePart = fmt.Sprintf(`, scope="%s"`, strings.Join(rule.RequiredScopes, " "))
+	}
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s%s"`, metaURL, scopePart))
+	w.WriteHeader(http.StatusUnauthorized)
+}
+
+func (s *AuthServer) protectedResourcesHandler(w http.ResponseWriter, request *http.Request) {
+	resource := request.URL.Query().Get("resource")
+	policyRule := s.Policy.Global
+
+	if resource != "" {
+		if unescaped, err := url.QueryUnescape(resource); err == nil {
+			resource = unescaped
+		}
+		if strings.HasPrefix(resource, "tool/") {
+			if rule, ok := s.Policy.Tools[strings.TrimPrefix(resource, "tool/")]; ok && rule.ProtectedResourceMetadata != nil {
+				policyRule = rule
+			}
+		} else if rule, ok := s.Policy.Resources[resource]; ok && rule.ProtectedResourceMetadata != nil {
+			policyRule = rule
+		}
+	}
+	metadata := policyRule.ProtectedResourceMetadata
+	if metadata == nil {
+		metadata = s.Policy.Global.ProtectedResourceMetadata
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(s.Policy.Global.ProtectedResourceMetadata)
+	_ = json.NewEncoder(w).Encode(metadata)
 }
