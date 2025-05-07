@@ -887,6 +887,7 @@ github.com/viant/gosh v0.2.1 h1:ASvDPh1P2gcfWEw00OnJggimwXDpmGxO0OploDjz83M=
 github.com/viant/gosh v0.2.1/go.mod h1:I/EJ39XLZL9vAme3CrvZ4WeiASneHJPd+pMF2njt/Mw=
 github.com/viant/jsonrpc v0.5.0 h1:jlU8ALpBvGicebQ+ETnUQ0/G8zoaAUZGgYaZsDzUVOc=
 github.com/viant/jsonrpc v0.5.0/go.mod h1:Q9hEZ9kKXRryxB8HxcZNjVkX4m8IapHGiS1z0FB9bhI=
+github.com/viant/mcp-protocol v0.2.0/go.mod h1:bVU9q8vBYTZkKXR1dMcj/7iL06XdX1g310tr89WhgTg=
 github.com/viant/scy v0.15.4 h1:cjqCbNIAdRIsIO3GrdI39GKbUx+jcpOvtGdgeAgVkjA=
 github.com/viant/scy v0.15.4/go.mod h1:yHDc9YmfDqhxiMPZcCRS+rb9KUjMNZniWZ9LMQoM0KI=
 github.com/viant/toolbox v0.34.5/go.mod h1:OxMCG57V0PXuIP2HNQrtJf2CjqdmbrOx5EkMILuUhzM=

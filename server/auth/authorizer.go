@@ -18,11 +18,6 @@ func (s *AuthServer) EnsureAuthorized(ctx context.Context, request *jsonrpc.Requ
 		return nil, nil
 	}
 
-	if s.Policy.Global != nil {
-		s.unauthorized(response, s.Policy.Global)
-		return nil, nil
-	}
-
 	var p authschema.WithMeta
 	// Parse the JSON-RPC params into the WithAuthMeta wrapper
 	if !schema.MustParseParams(request, response, &p) {
@@ -38,19 +33,20 @@ func (s *AuthServer) EnsureAuthorized(ctx context.Context, request *jsonrpc.Requ
 		return p.AuthMeta.Authorization, nil
 	}
 
-	if s.Policy.Global != nil { //each request is protected
-		s.unauthorized(response, s.Policy.Global)
-		return nil, nil
-	}
-
 	switch request.Method {
 	case schema.MethodToolsCall:
 		if s.Policy.Tools == nil {
+			if s.Policy.Global != nil { //each request is protected
+				s.unauthorized(response, s.Policy.Global)
+			}
 			return nil, nil
 		}
 		s.unauthorized(response, s.Policy.Tools[p.Name])
 	case schema.MethodResourcesRead:
 		if s.Policy.Resources == nil {
+			if s.Policy.Global != nil { //each request is protected
+				s.unauthorized(response, s.Policy.Global)
+			}
 			return nil, nil
 		}
 		s.unauthorized(response, s.Policy.Resources[p.Name])
