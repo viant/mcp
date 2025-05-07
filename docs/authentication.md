@@ -34,7 +34,7 @@ Follow the standard OAuth 2.1 Authorization Code Flow with PKCE. The server trea
 
 ## Securing the MCP Server
 
-Use `server.WithAuthConfig` when creating your MCP server to enable OAuth2 protection.
+Use `server.WithAuthPolicy` when creating your MCP server to enable OAuth2 protection.
 
 
 #### OAuth2 RoundTripper Options
@@ -122,13 +122,13 @@ func ExampleSpecBasedClient() {
 }
 ```
 
-## 2. Fine-Grained Tool/Resource Control (Experimental)
+## 2. Fine-Grained Tool/Resource Control (Experimental) as (discussed above)[https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/483]
 
 The experimental fine-grained mode lets you protect individual tools or resources with custom scopes or authorization servers.
 
 ### Server Side
 
-Use `server.WithAuthConfig` and the `Tools` map in `schema.AuthConfig` to specify per-tool metadata:
+Use `server.WithAuthorizationPolicy` and the `Tools` map in `authorization.Authorization` to specify per-tool metadata:
 ```go
 import (
     "context"
@@ -157,7 +157,7 @@ func main() {
         Tools:      toolAuth,
     }
     srv, err := server.New(
-        server.WithAuthConfig(authCfg),
+        server.WithAuthorizationPolicy(authCfg),
         // Other server options...
     )
     if err != nil {
@@ -181,7 +181,7 @@ import (
 )
 
 // Create the strict AuthServer
-strictAuth, _ := auth.NewAuthServer(&authorization.Config{
+strictAuth, _ := auth.NewAuthServer(&authorization.Policy{
     Global: &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
         Resource: "https://myapp.example.com",
         AuthorizationServers: []string{"https://auth.example.com/"},
@@ -200,7 +200,7 @@ fallbackAuth := auth.NewFallbackAuth(strictAuth, rt, rt)
 
 // Use the fallback authorizer in your server
 srv, _ := server.New(
-    server.WithAuthConfig(config),        // initializes strictAuth
+    server.WithAuthorizationPolicy(config),        // initializes strictAuth
     server.WithAuthorizer(fallbackAuth.EnsureAuthorized),
     // other options...
 )

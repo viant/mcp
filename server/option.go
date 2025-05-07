@@ -19,13 +19,13 @@ func WithCapabilities(capabilities schema.ServerCapabilities) Option {
 	}
 }
 
-// WithAuthConfig accepts authentication configuration (no-op stub).
-func WithAuthConfig(config *authorization.Config) Option {
+// WithAuthorizationPolicy accepts authentication policy (no-op stub).
+func WithAuthorizationPolicy(policy *authorization.Policy) Option {
 	return func(s *Server) (err error) {
-		if s.auth, err = auth.NewAuthServer(config); err != nil {
-			return fmt.Errorf("unable to create auth server %v: %v", config, err)
+		if s.auth, err = auth.NewAuthServer(policy); err != nil {
+			return fmt.Errorf("unable to create auth server %v: %v", policy, err)
 		}
-		if s.auth.Config.IsFineGrained() && s.authorizer == nil {
+		if s.auth.Policy.IsFineGrained() && s.authorizer == nil {
 			s.authorizer = s.auth.EnsureAuthorized
 		}
 		return nil

@@ -130,12 +130,12 @@ MCP supports transport-agnostic authentication and authorization (HTTP or HTTP-S
 
 - **Global Resource Protection (spec-based)**:
   - `github.com/viant/mcp/server/auth.AuthServer` enforces a Bearer token across all endpoints, except those excluded via `ExcludeURI` (e.g. `/sse`).
-  - Configure with `authorization.Config{Global: &Authorization, ExcludeURI: "/sse"}` passed to `server.WithAuthConfig`.
+  - Configure with `authorization.Policy{Global: &Authorization, ExcludeURI: "/sse"}` passed to `server.WithAuthorizationPolicy`.
   - Exposes `/.well-known/oauth-protected-resource` for metadata discovery (RFC 9728).
 
 - **Fine-Grained Tool/Resource Control (experimental)**:
   - Implements `auth.Authorizer` in `AuthServer.EnsureAuthorized`, returning `401 Unauthorized` per JSON-RPC request.
-  - Configure per-tool/resource metadata via `Config.Tools` or `Config.Tenants` in `authorization.Config`.
+  - Configure per-tool/resource metadata via `Config.Tools` or `Config.Tenants` in `authorization.Policy`.
 
 - **Fallback Token Fetching**:
   - `github.com/viant/mcp/server/auth.FallbackAuth` wraps a strict `AuthServer`.

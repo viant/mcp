@@ -18,8 +18,8 @@ func (s *AuthServer) EnsureAuthorized(ctx context.Context, request *jsonrpc.Requ
 		return nil, nil
 	}
 
-	if s.Config.Global != nil {
-		s.unauthorized(response, s.Config.Global)
+	if s.Policy.Global != nil {
+		s.unauthorized(response, s.Policy.Global)
 		return nil, nil
 	}
 
@@ -38,22 +38,22 @@ func (s *AuthServer) EnsureAuthorized(ctx context.Context, request *jsonrpc.Requ
 		return p.AuthMeta.Authorization, nil
 	}
 
-	if s.Config.Global != nil { //each request is protected
-		s.unauthorized(response, s.Config.Global)
+	if s.Policy.Global != nil { //each request is protected
+		s.unauthorized(response, s.Policy.Global)
 		return nil, nil
 	}
 
 	switch request.Method {
 	case schema.MethodToolsCall:
-		if s.Config.Tools == nil {
+		if s.Policy.Tools == nil {
 			return nil, nil
 		}
-		s.unauthorized(response, s.Config.Tools[p.Name])
+		s.unauthorized(response, s.Policy.Tools[p.Name])
 	case schema.MethodResourcesRead:
-		if s.Config.Tenants == nil {
+		if s.Policy.Resources == nil {
 			return nil, nil
 		}
-		s.unauthorized(response, s.Config.Tenants[p.Name])
+		s.unauthorized(response, s.Policy.Resources[p.Name])
 	}
 	return nil, nil
 }

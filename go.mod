@@ -8,7 +8,7 @@ require (
 	github.com/viant/afs v1.25.1-0.20231110184132-877ed98abca1
 	github.com/viant/gosh v0.2.1
 	github.com/viant/jsonrpc v0.5.0
-	github.com/viant/mcp-protocol v0.1.1-0.20250506163353-0c9e9ec52598
+	github.com/viant/mcp-protocol v0.2.0
 	golang.org/x/oauth2 v0.28.0
 )
 
@@ -29,3 +29,4 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+

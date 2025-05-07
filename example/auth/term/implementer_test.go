@@ -102,7 +102,7 @@ func startServer() error {
 	})
 
 	var options = []server.Option{
-		server.WithAuthConfig(&authorization.Config{
+		server.WithAuthorizationPolicy(&authorization.Policy{
 			ExcludeURI: "/sse",
 			Global: &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
 				Resource: "http://localhost:4981",

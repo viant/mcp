@@ -111,7 +111,7 @@ func startServer() error {
 		serverproto.RegisterTool[*tool.TerminalCommand](implementer, "terminal", "Run terminal commands", terminalTool.Call)
 	})
 	var options = []server.Option{
-		server.WithAuthConfig(authConfig()),
+		server.WithAuthorizationPolicy(authConfig()),
 		server.WithNewImplementer(newImplementer),
 		server.WithImplementation(schema.Implementation{"MCP Terminal", "0.1"}),
 		server.WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
@@ -144,8 +144,8 @@ func getRoundTripper() (*transport.RoundTripper, error) {
 	return roundTripper, err
 }
 
-func authConfig() *authorization.Config {
-	return &authorization.Config{
+func authConfig() *authorization.Policy {
+	return &authorization.Policy{
 		ExcludeURI: "/sse",
 		Tools: map[string]*authorization.Authorization{ //tool level
 			"terminal": &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{

@@ -12,24 +12,24 @@ import (
 
 // AuthServer acts as a broker between clients and external OAuth2/OIDC providers.
 type AuthServer struct {
-	// Config holds the OAuth2 protection settings; use Global or Tools for spec-based or experimental modes.
-	Config *authorization.Config
+	// Policy holds the OAuth2 protection settings; use Global or Tools for spec-based or experimental modes.
+	Policy *authorization.Policy
 
 	//if this option is set, server will start oauth 2.1 flow itself (for case we want flexibility with stdio server)
 	RoundTripper *transport.RoundTripper
 }
 
 // NewAuthServer initializes an AuthServer with the given configuration.
-func NewAuthServer(config *authorization.Config) (*AuthServer, error) {
+func NewAuthServer(policy *authorization.Policy) (*AuthServer, error) {
 	s := &AuthServer{
-		Config: config,
+		Policy: policy,
 	}
 	return s, nil
 }
 
 // MustNewAuthServer creates an AuthServer or panics if configuration is invalid.
-func MustNewAuthServer(config *authorization.Config) *AuthServer {
-	s, err := NewAuthServer(config)
+func MustNewAuthServer(policy *authorization.Policy) *AuthServer {
+	s, err := NewAuthServer(policy)
 	if err != nil {
 		panic(err)
 	}
@@ -44,11 +44,11 @@ func (s *AuthServer) RegisterHandlers(mux *http.ServeMux) {
 // Middleware wraps a handler to enforce bearer-token authorization.
 func (s *AuthServer) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.Config.Global == nil {
+		if s.Policy.Global == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if s.Config.ExcludeURI != "" && strings.HasPrefix(r.URL.Path, s.Config.ExcludeURI) {
+		if s.Policy.ExcludeURI != "" && strings.HasPrefix(r.URL.Path, s.Policy.ExcludeURI) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -71,5 +71,5 @@ func (s *AuthServer) Middleware(next http.Handler) http.Handler {
 // protectedResourcesHandler serves the OAuth2 authorization server metadata document.
 func (s *AuthServer) protectedResourcesHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(s.Config.Global.ProtectedResourceMetadata)
+	_ = json.NewEncoder(w).Encode(s.Policy.Global.ProtectedResourceMetadata)
 }
