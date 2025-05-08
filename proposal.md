@@ -143,8 +143,8 @@ Each tool or resource **declares** what it needs; the MCP server enforces it:
 ### Token Redemption & Caching (Server Side)
 
 * MCP server redeems the code (PKCE verifier + `client_id`) at the AS.
-* Access-tokens are cached per **(resource, scope, user)** triple.
-* A cached token may be reused **only if** its scope ⊇ `required_scopes` *and* it is valid for the exact `resource` URI.
+* Access-tokens are cached per **(resource, scope, client)** triple.
+* A cached token may be reused **only if** its scope ⊇ client,  `required_scopes` *and* it is valid for the exact `resource` URI.
 * Refresh or silent-refresh when possible; never expose tokens outside the server boundary.
 
 ---
@@ -318,6 +318,7 @@ The MCP client uses this information to initiate an OAuth 2.0 authorization code
 ##### Sequence Diagram: HTTP SSE Mode
 
 ```mermaid
+
 sequenceDiagram
     autonumber
     participant "MCP Client"          as MCP_Client
@@ -331,7 +332,7 @@ sequenceDiagram
 
     %% ---- First call without credentials -----------------------
     MCP_Client ->> MCP_Server: tools/call (SSE, no token)
-    MCP_Server -->> MCP_Client: 401 Unauthorized + WWW-Authenticate (authorization_uri, scope, resource,<br/>client_id=myClientId, code_challenge, state)
+    MCP_Server -->> MCP_Client: 401 Unauthorized + WWW-Authenticate (authorization_uri, scope, resource,\nclient_id=myClientId, code_challenge, state)
 
     %% ---- Front-channel OAuth 2.0 + PKCE -----------------------
     MCP_Client ->> Authorization_Server: GET /authorize?client_id=myClientId&code_challenge=…&state=…
@@ -341,7 +342,7 @@ sequenceDiagram
     MCP_Client ->> MCP_Server: tools/call (SSE) + X-Authorization-Code: ABC123
 
     %% ---- Back-channel token redemption ------------------------
-    MCP_Server ->> Authorization_Server: POST /token (code=ABC123, code_verifier,<br/>client_id=myClientId, client_secret=•••)
+    MCP_Server ->> Authorization_Server: POST /token (code=ABC123, code_verifier,\nclient_id=myClientId, client_secret=•••)
     Authorization_Server -->> MCP_Server: access_token=XYZ
     MCP_Server ->> Protected_Resource: bearer XYZ
     Protected_Resource -->> MCP_Server: result
@@ -366,7 +367,7 @@ sequenceDiagram
 
     %% ---- First call without credentials -----------------------
     MCP_Client ->> MCP_Server: tools/call (no token)
-    MCP_Server -->> MCP_Client: Error -32001 Unauthorized + {authorization_uri, scope, resource,<br/>client_id=myClientId, code_challenge, state}
+    MCP_Server -->> MCP_Client: Error -32001 Unauthorized + {authorization_uri, scope, resource,\nclient_id=myClientId, code_challenge, state}
 
     %% ---- Front-channel OAuth 2.0 + PKCE -----------------------
     MCP_Client ->> Authorization_Server: GET /authorize?client_id=myClientId&code_challenge=…&state=…
@@ -376,7 +377,7 @@ sequenceDiagram
     MCP_Client ->> MCP_Server: tools/call { _meta.authorization.code = DEF456 }
 
     %% ---- Back-channel token redemption ------------------------
-    MCP_Server ->> Authorization_Server: POST /token (code=DEF456, code_verifier,<br/>client_id=myClientId, client_secret=•••)
+    MCP_Server ->> Authorization_Server: POST /token (code=DEF456, code_verifier,\nclient_id=myClientId, client_secret=•••)
     Authorization_Server -->> MCP_Server: access_token=XYZ
     MCP_Server ->> Protected_Resource: bearer XYZ
     Protected_Resource -->> MCP_Server: result
