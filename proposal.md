@@ -384,7 +384,7 @@ sequenceDiagram
     MCP_Server-->>MCP_Client: error.code -32001 error.data=(authorization_uri="...")
     MCP_Client->>OAuth2_Client:  Authorization Request (code + PKCE, scopes)
 
-    MCP_Client->>MCP_Server tools/call (with token in _meta.authorization{code=code, redirect_uri=https://localhost:port/callback)}
+    MCP_Client->>MCP_Server: tools/call (with token in _meta.authorization(code=code, redirect_uri=https://localhost:port/callback)
     OAuth2_Client->>Auth_Server: Token Request (code + PKCE verifier)
     Auth_Server-->>OAuth2_Client: Access Token
     OAuth2_Client-->>MCP_Client: return access token
