@@ -126,7 +126,7 @@ The MCP server supports two mediation flows for initiating OAuth authorization w
 
 ---
 
-#### 1. **HTTP SSE**
+#### 1. **HTTP SSE Enforced Security**
 
 - When a Server-Sent Events (SSE) request arrives **without credentials**, the MCP server responds with:
 
@@ -139,9 +139,9 @@ protected_metadata="…/.well-known/oauth-protected-resource"
 - The client then initiates a front-channel **Authorization Code + PKCE** flow using the provided parameters,and retries the SSE request with:
 X-MCP-Authorization: code:<auth-code>, redirect_uri: ... 
 
-#### 2. **JSON-RPC**
+#### 2. **JSON-RPC Enforced Security**
 
-- If the `tools/call` method is invoked **without valid credentials**, the server responds with a structured authorization error:
+- If the `tools/call`, `resource/read` method is invoked **without valid credentials**, the server responds with a structured authorization error:
 
 ```json
 {
@@ -353,10 +353,10 @@ sequenceDiagram
     MCP_Server-->>MCP_Client: tool list 
 
     MCP_Client->>MCP_Server: tools/call (not authorized yet)
-    MCP_Server-->>MCP_Client: error 401 WWW-Authorize authorization_uri="https://example.com/.well-known/oauth-protected-resource", scope="read write", resource="https://api.example.com", client_id="my-oauth2_client_id", code_challenge="xxxx", code_challenge_method="S256" redirect_uri="https://localhost/callback"
+    MCP_Server-->>MCP_Client: error 401 WWW-Authorize authorization_uri=".../authorizer?resource=…,scope=…,client_id=…,code_challenge=…,code_challenge_method=…,redirect_uri=…,state=…"
     MCP_Client->>OAuth2_Client:  Authorization Request (code + PKCE, scopes)
-
-    MCP_Client->>MCP_Server tools/call (with token in X-MCP-Authorization: auth_code=code, redirect_uri=https://localhost:port/callback)}
+    
+    MCP_Client->>MCP_Server: tools/call (with token in X-MCP-Authorization: auth_code=code, redirect_uri=https://localhost:port/callback)}
     OAuth2_Client->>Auth_Server: Token Request (code + PKCE verifier)
     Auth_Server-->>OAuth2_Client: Access Token
     OAuth2_Client-->>MCP_Client: return access token
@@ -381,7 +381,7 @@ sequenceDiagram
     MCP_Server-->>MCP_Client: tool list 
 
     MCP_Client->>MCP_Server: tools/call (not authorized yet)
-    MCP_Server-->>MCP_Client: error.code -32001 error.data={authorization_uri= "https://example.com/.well-known/oauth-protected-resource", scope="read write", resource="https://api.example.com", client_id="my-oauth2_client_id", code_challenge="xxxx", code_challenge_method="S256" redirect_uri="https://localhost/callback"}
+    MCP_Server-->>MCP_Client: error.code -32001 error.data={authorization_uri=".../authorizer?resource=…,scope=…,client_id=…,code_challenge=…,code_challenge_method=…,redirect_uri=…,state=…}
     MCP_Client->>OAuth2_Client:  Authorization Request (code + PKCE, scopes)
 
     MCP_Client->>MCP_Server tools/call (with token in _meta.authorization{code=code, redirect_uri=https://localhost:port/callback)}
@@ -397,9 +397,11 @@ sequenceDiagram
 
 ## Client-Side Implementation
 
-When a tool requires authorization, the MCP client is responsible for handling the initial user-facing portion of the OAuth 2.0 Authorization Code flow using PKCE. This includes launching a `redirect_uri` listener, retrieving the `auth_code`, and returning both values to the MCP server.
+When a tool requires authorization, the MCP client is responsible for handling the initial user-facing portion of the OAuth 2.0 Authorization Code flow using PKCE. 
+This includes launching a `redirect_uri` listener, retrieving the `auth_code`, and returning both values to the MCP server.
 
-### Steps:
+
+### Authorization Flow Steps
 
 1. **Start a Local Redirect Listener**  
    The client starts a temporary HTTP server on a **dynamically chosen localhost port** (e.g., `http://127.0.0.1:38545/callback`) to receive the `auth_code` after the user authenticates.
@@ -438,7 +440,6 @@ Example: `X-MCP-Authorization: code=xyz, redirect_uri=http://127.0.0.1:38545/cal
 When exchanging an authorization code at the `/token` endpoint, the **OAuth 2.0 specification (RFC 6749 §4.1.3)** requires that the `redirect_uri` parameter in the token request **must exactly match** the one used in the initial `/authorize` request. 
 This is a critical anti-phishing measure to prevent code injection or misuse.
 
-> 🔒 **Matching redirect URI is required to prevent stolen codes from being replayed using a different redirect URI.**
 
 This becomes particularly important when the redirect URI uses a **dynamic port** (e.g., `http://127.0.0.1:38545/callback`), which may differ on every authorization flow. 
 Since the MCP server is responsible for redeeming the code, it must know the exact `redirect_uri` value used by the client.
