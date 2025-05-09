@@ -353,7 +353,7 @@ sequenceDiagram
     MCP_Server-->>MCP_Client: tool list 
 
     MCP_Client->>MCP_Server: tools/call (not authorized yet)
-    MCP_Server-->>MCP_Client: error 401 WWW-Authorize authorization_uri=".../authorizer?resource=…,scope=…,client_id=…,code_challenge=…,code_challenge_method=…,redirect_uri=…,state=…"
+    MCP_Server-->>MCP_Client: error 401 WWW-Authorize authorization_uri="..."
     MCP_Client->>OAuth2_Client:  Authorization Request (code + PKCE, scopes)
     
     MCP_Client->>MCP_Server: tools/call (with token in X-MCP-Authorization: auth_code=code, redirect_uri=https://localhost:port/callback)}
@@ -381,7 +381,7 @@ sequenceDiagram
     MCP_Server-->>MCP_Client: tool list 
 
     MCP_Client->>MCP_Server: tools/call (not authorized yet)
-    MCP_Server-->>MCP_Client: error.code -32001 error.data=(authorization_uri=".../authorizer?resource=…,scope=…,client_id=…,code_challenge=…,code_challenge_method=…,redirect_uri=…,state=…)
+    MCP_Server-->>MCP_Client: error.code -32001 error.data=(authorization_uri="...")
     MCP_Client->>OAuth2_Client:  Authorization Request (code + PKCE, scopes)
 
     MCP_Client->>MCP_Server tools/call (with token in _meta.authorization{code=code, redirect_uri=https://localhost:port/callback)}
