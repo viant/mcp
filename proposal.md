@@ -359,7 +359,7 @@ sequenceDiagram
     MCP_Client->>MCP_Server: tools/call (with token in X-MCP-Authorization: auth_code=code, redirect_uri=https://localhost:port/callback)}
     OAuth2_Client->>Auth_Server: Token Request (code + PKCE verifier)
     Auth_Server-->>OAuth2_Client: Access Token
-    OAuth2_Client-->>MCP_Client: return access token
+    OAuth2_Client-->>MCP_Server: return access token
     MCP_Server->>Resource: tool invocation with bearer token
     Resource-->>MCP_Server: execution result
     MCP_Server-->>MCP_Client: result
@@ -387,7 +387,7 @@ sequenceDiagram
     MCP_Client->>MCP_Server: tools/call (with token in _meta.authorization(code=code, redirect_uri=https://localhost:port/callback)
     OAuth2_Client->>Auth_Server: Token Request (code + PKCE verifier)
     Auth_Server-->>OAuth2_Client: Access Token
-    OAuth2_Client-->>MCP_Client: return access token
+    OAuth2_Client-->>MCP_Server: return access token
     MCP_Server->>Resource: tool invocation with bearer token
     Resource-->>MCP_Server: execution result
     MCP_Server-->>MCP_Client: result
