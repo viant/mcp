@@ -19,7 +19,9 @@ multi-user scenarios:
     - This approach treats user credentials or context as part of the call metadata, enabling multi-tenant clients to
       dynamically inject config for each end-user.
 
-- **MCP Server as OAuth 2.0 Resource Server**: Issue [#205](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/205) proposed that MCP servers should act as OAuth 2.0 resource servers, using external identity providers for authorization.
+- **MCP Server as OAuth 2.0 Resource Server**:
+  Issue [#205](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/205) proposed that MCP servers
+  should act as OAuth 2.0 resource servers, using external identity providers for authorization.
     - In this model, the MCP server itself doesn’t issue tokens or maintain session state; the client obtains an access
       token from an OAuth authorization server (via any standard flow) and presents it with requests
     - The MCP server can then rely on standard OAuth mechanisms – for example, returning an HTTP 401 with a
@@ -70,82 +72,122 @@ multi-user scenarios:
   consolidate a path forward for fine-grained resource control in MCP, aligning with established terminology and
   extending the protocol where needed.
 
-# OAuth 2.0 / PKCE Mediation for MCP
-*(Revised with naming, typos, and flow fixes)*
-
 ---
 
 ## Proposal Summary
 
-### Per-Tool / Resource Auth Metadata
-Each tool or resource **declares** what it needs; the MCP server enforces it:
+## Per-Tool / Resource Auth Metadata
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `protectedResourceMetadata` | object | [RFC 9728] JSON fragment describing the resource (URI + `authorization_servers`). |
-| `required_scopes` | string[] | Minimal OAuth scopes (empty = bearer token only). |
-| `use_id_token` | boolean | `true` → request an ID token *instead of / in addition to* an access-token. |
-| `client_id` | string | Confidential OAuth 2 client identifier registered with the AS. |
+Each tool or resource **declares** its own authorization requirements via a separate policy. The MCP server is responsible for enforcing this policy.
 
+| Field                       | Type     | Purpose                                                                                                                 |
+|-----------------------------|----------|-------------------------------------------------------------------------------------------------------------------------|
+| `protectedResourceMetadata` | object   | A [RFC 9728]-compliant JSON fragment describing the resource, including its URI and associated `authorization_servers`. |
+| `required_scopes`           | string[] | The minimal OAuth scopes required. If empty, only a bearer token is expected.                                           |
+| `use_id_token`              | boolean  | If `true`, the system requests an ID token *instead of or in addition to* an access token.                              |
+| `client_id`                 | string   | The confidential OAuth 2.0 client identifier registered with the Authorization Server.                                  |
 
 ---
 
-### Two Mediation Modes
+### Backend-for-Frontend (BFF) Architecture with Resource-Bound Access Tokens
 
-1. **HTTP SSE**
-    * If an SSE request arrives **without credentials**, the MCP server responds:
-      ```
-      HTTP/1.1 401 Unauthorized  
-      WWW-Authenticate: Bearer authorization_uri="…/.well-known/oauth-protected-resource", \
-                        scope="…", resource="…", client_id="…", \
-                        code_challenge="…", code_challenge_method="S256", state="…"
-      ```  
-      *`client_id`, `code_challenge`, … are non-standard auth-params; clients **MUST ignore unknown parameters** per RFC 6750 §3.*
-    * Client launches a front-channel **Authorization-Code + PKCE** flow and then retries the SSE request with header:
-      ```
-      X-Authorization-Code: <code>
-      ```
+To enforce strong security boundaries and maintain control over OAuth flows, the MCP architecture adopts a Backend-for-Frontend (BFF) pattern. 
+In this model, the MCP Server acts as an intermediary between the MCP Client (typically a browser or desktop application) and downstream protected resources.
 
-2. **JSON-RPC**
-    * If `tools/call` is invoked without credentials, the server replies:
-      ```json
-      {
-        "jsonrpc": "2.0",
-        "id": 42,
-        "error": {
-          "code": -32001,
-          "message": "Unauthorized",
-          "data": {
-            "required_scopes": ["scope1"],
-            "protectedResourceMetadata": {
-              "resource": "myTool",
-              "authorization_servers": ["https://auth.acme-cloud.com"]
-            },
-            "client_id": "myClientId",
-            "code_challenge": "Xz…",
-            "code_challenge_method": "S256",
-            "state": "abc123"
-          }
-        }
+#### Key Characteristics
+
+- **MCP Client is Lightweight**  
+  The client (frontend) does not directly handle sensitive tokens or secrets. It initiates OAuth flows via URLs provided by the MCP Server, but does not retain or manage access tokens.
+
+- **MCP Server as the Confidential Client**  
+  The MCP Server is the registered OAuth 2.0 confidential client. It performs the token exchange, holds client credentials, and manages scopes and lifetimes.
+
+- **Resource-Bound Access Tokens**  
+  Each issued access token is explicitly bound to a single resource (audience). This means:
+    - The Authorization Server (AS) knows which resource the token is intended for.
+    - Tokens cannot be reused across resources, reducing the blast radius of leaks or misuse.
+    - Fine-grained policies (per resource) are easier to enforce.
+
+- **Initiation Flow**  
+  When the MCP Client requires access:
+    1. The MCP Server constructs an `/authorize` URL with the appropriate `client_id`, `scope`, `resource`, and `code_challenge`.
+    2. The MCP Client redirects the user-agent to that URL.
+    3. On completion, the AS redirects back with an auth code, which the MCP Server exchanges for tokens.
+    4. The MCP Server then acts on behalf of the user with the downstream resource.
+
+- **No Token or Secret Exposure to Client**  
+  The frontend never sees client secrets, access tokens, or refresh tokens. This maintains a strong separation of concerns and reduces the attack surface.
+ 
+--
+
+### Two Authorization Mediation Modes
+
+The MCP server supports two mediation flows for initiating OAuth authorization when credentials are missing or insufficient:
+
+---
+
+#### 1. **HTTP SSE**
+
+- When a Server-Sent Events (SSE) request arrives **without credentials**, the MCP server responds with:
+
+HTTP/1.1 401 Unauthorized
+```http request
+WWW-Authenticate: Bearer authorization_uri=".../authorizer?resource=…,scope=…,client_id=…,code_challenge=…,code_challenge_method=…,redirect_uri=…,state=…",
+protected_metadata="…/.well-known/oauth-protected-resource"
+```
+
+- The client then initiates a front-channel **Authorization Code + PKCE** flow using the provided parameters,and retries the SSE request with:
+X-MCP-Authorization: code:<auth-code>, redirect_uri: ... 
+
+#### 2. **JSON-RPC**
+
+- If the `tools/call` method is invoked **without valid credentials**, the server responds with a structured authorization error:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 42,
+  "error": {
+    "code": -32001,
+    "message": "Unauthorized",
+    "data": {
+      "authorization_uri": ".../authorizer?resource=…,scope=…,client_id=…,code_challenge=…,code_challenge_method=…,redirect_uri=…,state=…"
+    }
+  }
+}
+```
+- The client then initiates a front-channel **Authorization Code + PKCE** flow using the provided parameters,and retries the request with:
+  _meta.authorization{code=code, redirect_uri=https://localhost:port/callback)}
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 42,
+  "method": "tools/call",
+  "params": {
+    "name": "myTool",
+    "arguments": {},
+    "_meta": {
+      "authorization": {
+        "code": "xxxx...",
+        "redirect_uri": "..."
       }
-      ```  
-    * The client performs the same OAuth flow, then re-calls with:
-      ```jsonc
-      "_meta": { "authorization": { "code": "<auth-code>" } }
-      ```
+    }
+  }
+}
+```
+  
+💡 These two modes are proposed because MCP may operate over multiple transports—including non-HTTP channels like stdio—where traditional HTTP status codes and headers (e.g., 401 Unauthorized, WWW-Authenticate) are not applicable.
+In those environments, JSON-RPC error responses serve the same purpose: to deliver authorization metadata and trigger the OAuth flow.
+This dual-mode approach ensures consistent security regardless of the transport protocol.
 
-3. **Single Error Code**
-    * **`-32001`** is reserved for *all* authorization failures (analogous to HTTP 401).  
-      *Until the JSON-RPC error-code registry is final (draft-ietf-json-rpc-cb58), any value in -32000…-32099 remains implementation-defined.*
+---_
 
----
-
-### Token Redemption & Caching (Server Side)
+### Token Redemption & Caching (MCP Server Side)
 
 * MCP server redeems the code (PKCE verifier + `client_id`) at the AS.
 * Access-tokens are cached per **(resource, scope, client)** triple.
-* A cached token may be reused **only if** its scope ⊇ client,  `required_scopes` *and* it is valid for the exact `resource` URI.
 * Refresh or silent-refresh when possible; never expose tokens outside the server boundary.
+* MCP server should follow secure storage and logging best practices.
 
 ---
 
@@ -200,7 +242,7 @@ Each tool or resource **declares** what it needs; the MCP server enforces it:
 
 ## Proposal Details
 
-### Tools & Resources Declare Authorization
+### Centralized  Authorization Policy bounded to Global MCP, Tools and Resources
 
 Idea: Every tool or resource advertises the auth rule it needs.
 
@@ -266,6 +308,7 @@ Authorization rules are defined in a separate configuration schema that maps to 
 }
 ```
 
+
 Each entry in this external policy schema corresponds to the Protected Resource Metadata (RFC 9728) and is extended with
 two MCP-specific fields:
 
@@ -277,170 +320,165 @@ two MCP-specific fields:
 This unified representation lets operators configure resource metadata and per-resource authorization requirements in
 one place, without modifying individual tool definitions.
 
-Clients do not fetch authorization policy proactively. Instead, when calling a tool without credentials, the server  responds with
 
-a) for HTTP SSE enforced security,  the server returns a 401 Unauthorized
+
+### Backend-for-Frontend (BFF) Architecture with Resource-Bound Access Tokens
+
+### Backend-for-Frontend (BFF) Architecture with Resource-Bound Access Tokens
+
+To authorize access to MCP tools and resources, this proposal adopts a **Backend-for-Frontend (BFF)** architecture with **resource-bound access tokens**. This ensures that tokens are only valid for their intended audience and cannot be reused across services.
+
+Clients do not proactively fetch authorization policy. Instead, when calling a tool without prior authorization, the MCP server responds with a `401 Unauthorized` error that includes the necessary **authorization metadata**. The client then uses this metadata to initiate the authorization flow.
+
+Specifically, the MCP client launches an OAuth 2.0 Authorization Code flow with PKCE, using the provided parameters such as `client_id`, `resource`, `code_challenge`, and `state`. 
+After user authorization, the client receives an authorization code. The MCP server then redeems the code—along with the code verifier, client credentials, and any required parameters
+
+
+a)  HTTP SSE Enforced Security — Sequence Diagram
 
 ```json
 HTTP/1.1 401 Unauthorized
 WWW-Authenticate: Bearer authorization_uri="https://example.com/.well-known/oauth-protected-resource", scope="read write", resource="https://api.example.com", client_id="my-oauth2_client_id", code_challenge="xxxx", code_challenge_method="S256"
 ```
 
-
-  b) for JSON-RPC enforced security, the server returns a JSON-RPC error with code -32001 (Missing Token) and a data object containing the
-`requiredScopes` and `protectedResourceMetadata` fields.
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 42,
-  "error": {
-    "code": -32001,
-    "message": "Missing Token",
-    "data": {
-      "requiredScopes": [
-        "scope1"
-      ],
-      "protectedResourceMetadata": {
-        "resource": "myTool",
-        "authorizationServers": []
-      },
-      "clientId": "my-oauth2_client_id",
-      "code_challenge": "Xz....",
-      "code_challenge_method": "S256"
-    }
-  }
-}
-```
-
-The MCP client uses this information to initiate an OAuth 2.0 authorization code flow, including the PKCE parameters and state. Once the user authorizes, the client receives an authorization code. The MCP server redeems this code (along with the code verifier, client ID, client secret or private key, and required parameters) to obtain an access token. The server should cache the access token and refresh it as needed.
-
-##### Sequence Diagram: HTTP SSE Mode
-
 ```mermaid
-
 sequenceDiagram
-    autonumber
-    participant "MCP Client"          as MCP_Client
-    participant "MCP Server"          as MCP_Server
-    participant "Authorization Server" as Authorization_Server
-    participant "Protected Resource"  as Protected_Resource
+    participant MCP_Client as MCP Client
+    participant OAuth2_Client as OAuth2 Client
+    participant MCP_Server as MCP Server
+    participant Auth_Server as Authorization Server
+    participant Resource as Protected Resource
 
-    %% ---- Capability discovery ---------------------------------
-    MCP_Client ->> MCP_Server: tools/list
-    MCP_Server -->> MCP_Client: list (no auth metadata)
+    MCP_Client->>MCP_Server: tools/list
+    MCP_Server-->>MCP_Client: tool list 
 
-    %% ---- First call without credentials -----------------------
-    MCP_Client ->> MCP_Server: tools/call (SSE, no token)
-    MCP_Server -->> MCP_Client: 401 Unauthorized + WWW-Authenticate (authorization_uri, scope, resource,\nclient_id=myClientId, code_challenge, state)
+    MCP_Client->>MCP_Server: tools/call (not authorized yet)
+    MCP_Server-->>MCP_Client: error 401 WWW-Authorize authorization_uri="https://example.com/.well-known/oauth-protected-resource", scope="read write", resource="https://api.example.com", client_id="my-oauth2_client_id", code_challenge="xxxx", code_challenge_method="S256" redirect_uri="https://localhost/callback"
+    MCP_Client->>OAuth2_Client:  Authorization Request (code + PKCE, scopes)
 
-    %% ---- Front-channel OAuth 2.0 + PKCE -----------------------
-    MCP_Client ->> Authorization_Server: GET /authorize?client_id=myClientId&code_challenge=…&state=…
-    Authorization_Server -->> MCP_Client: (redirect) code=ABC123
-
-    %% ---- Pass code to server ----------------------------------
-    MCP_Client ->> MCP_Server: tools/call (SSE) + X-Authorization-Code: ABC123
-
-    %% ---- Back-channel token redemption ------------------------
-    MCP_Server ->> Authorization_Server: POST /token (code=ABC123, code_verifier,\nclient_id=myClientId, client_secret=•••)
-    Authorization_Server -->> MCP_Server: access_token=XYZ
-    MCP_Server ->> Protected_Resource: bearer XYZ
-    Protected_Resource -->> MCP_Server: result
-    MCP_Server -->> MCP_Client: SSE event stream
+    MCP_Client->>MCP_Server tools/call (with token in X-MCP-Authorization: auth_code=code, redirect_uri=https://localhost:port/callback)}
+    OAuth2_Client->>Auth_Server: Token Request (code + PKCE verifier)
+    Auth_Server-->>OAuth2_Client: Access Token
+    OAuth2_Client-->>MCP_Client: return access token
+    MCP_Server->>Resource: tool invocation with bearer token
+    Resource-->>MCP_Server: execution result
+    MCP_Server-->>MCP_Client: result
 ```
 
+b) JSON-RPC Enforced Security
 
 
-##### Sequence Diagram: JSON-RPC Mode
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant "MCP Client"          as MCP_Client
-    participant "MCP Server"          as MCP_Server
-    participant "Authorization Server" as Authorization_Server
-    participant "Protected Resource"  as Protected_Resource
+    participant MCP_Client as MCP Client
+    participant OAuth2_Client as OAuth2 Client
+    participant MCP_Server as MCP Server
+    participant Auth_Server as Authorization Server
+    participant Resource as Protected Resource
 
-    %% ---- Capability discovery ---------------------------------
-    MCP_Client ->> MCP_Server: tools/list
-    MCP_Server -->> MCP_Client: list (no auth metadata)
+    MCP_Client->>MCP_Server: tools/list
+    MCP_Server-->>MCP_Client: tool list 
 
-    %% ---- First call without credentials -----------------------
-    MCP_Client ->> MCP_Server: tools/call (no token)
-    MCP_Server -->> MCP_Client: Error -32001 Unauthorized + {authorization_uri, scope, resource,\nclient_id=myClientId, code_challenge, state}
+    MCP_Client->>MCP_Server: tools/call (not authorized yet)
+    MCP_Server-->>MCP_Client: error.code -32001 error.data={authorization_uri= "https://example.com/.well-known/oauth-protected-resource", scope="read write", resource="https://api.example.com", client_id="my-oauth2_client_id", code_challenge="xxxx", code_challenge_method="S256" redirect_uri="https://localhost/callback"}
+    MCP_Client->>OAuth2_Client:  Authorization Request (code + PKCE, scopes)
 
-    %% ---- Front-channel OAuth 2.0 + PKCE -----------------------
-    MCP_Client ->> Authorization_Server: GET /authorize?client_id=myClientId&code_challenge=…&state=…
-    Authorization_Server -->> MCP_Client: (redirect) code=DEF456
-
-    %% ---- Attach code in retry ---------------------------------
-    MCP_Client ->> MCP_Server: tools/call { _meta.authorization.code = DEF456 }
-
-    %% ---- Back-channel token redemption ------------------------
-    MCP_Server ->> Authorization_Server: POST /token (code=DEF456, code_verifier,\nclient_id=myClientId, client_secret=•••)
-    Authorization_Server -->> MCP_Server: access_token=XYZ
-    MCP_Server ->> Protected_Resource: bearer XYZ
-    Protected_Resource -->> MCP_Server: result
-    MCP_Server -->> MCP_Client: JSON-RPC result
+    MCP_Client->>MCP_Server tools/call (with token in _meta.authorization{code=code, redirect_uri=https://localhost:port/callback)}
+    OAuth2_Client->>Auth_Server: Token Request (code + PKCE verifier)
+    Auth_Server-->>OAuth2_Client: Access Token
+    OAuth2_Client-->>MCP_Client: return access token
+    MCP_Server->>Resource: tool invocation with bearer token
+    Resource-->>MCP_Server: execution result
+    MCP_Server-->>MCP_Client: result
 ```
 
 
-Benefits of this approach:
 
-- Keeps tool/resource definitions minimal and decoupled from authorization logic.
-- Easier to update authorization behavior centrally without modifying every individual tool or resource.
+## Client-Side Implementation
 
-Centralized configuration supports better scalability and separation of concerns in more complex, multi-tenant systems.
+When a tool requires authorization, the MCP client is responsible for handling the initial user-facing portion of the OAuth 2.0 Authorization Code flow using PKCE. This includes launching a `redirect_uri` listener, retrieving the `auth_code`, and returning both values to the MCP server.
+
+### Steps:
+
+1. **Start a Local Redirect Listener**  
+   The client starts a temporary HTTP server on a **dynamically chosen localhost port** (e.g., `http://127.0.0.1:38545/callback`) to receive the `auth_code` after the user authenticates.
+
+2. **Initiate Browser-Based Authorization Flow**  
+   The client opens the browser to the `authorization_uri`, including:
+    - `client_id`
+    - `code_challenge`
+    - `redirect_uri` (pointing to the local listener)
+    - `resource`
+    - `state`
+    - PKCE parameters (e.g. ,`code_challenge`, `code_challenge_method`)
+
+3. **Receive Authorization Code**  
+   After the user completes the login/consent flow, the Authorization Server redirects the browser back to the local listener with:
+
+GET /callback?code=...&state=...
+
+4. **Send Code + Redirect URI to MCP Server**  
+     The client sends a follow-up request to the MCP server with the received `auth_code` and `redirect_uri`.
 
 
-### Client Supplies Authorization Code after Unauthorized Error
 
-#### OAuth 2.0 Client Registrations
+### Including `redirect_uri` and `auth_code` via `X-MCP-Authorization`: Rationale and Alternatives
 
-Note: Although the MCP spec could allow dynamic client registration (RFC 7591), dynamic registration is neither  practical nor secure in most deployments, and is not widely supported by major OAuth2 servers.
-Therefore, MCP Server OAuth Client SHOULD BE be statically pre-configured with one or more OAuth2 confidential client registrations for each trusted
-authorization server. On unauthorized error, the MCP server returns the client ID and code challenge to the client, which can then use them to initiate the authorization flow.
-After the client receives the authorization code, it sends it back to the MCP server in the `_meta` field of the JSON-RPC request on JSON-RPC medaitor mode.
+In this proposal, when a client initiates an OAuth 2.0 flow and receives an `auth_code`, it resends the **original payload** (e.g., the SSE or JSON-RPC request) along with an `X-MCP-Authorization` header containing both:
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 42,
-  "method": "tools/call",
-  "params": {
-    "name": "myTool",
-    "arguments": {},
+- `code` (the authorization code received from the redirect)
+- `redirect_uri` (the local dynamic listener URL used in the flow)
+
+Example: `X-MCP-Authorization: code=xyz, redirect_uri=http://127.0.0.1:38545/callback`
+
+
+### Why the `redirect_uri` Must Be Sent
+
+When exchanging an authorization code at the `/token` endpoint, the **OAuth 2.0 specification (RFC 6749 §4.1.3)** requires that the `redirect_uri` parameter in the token request **must exactly match** the one used in the initial `/authorize` request. 
+This is a critical anti-phishing measure to prevent code injection or misuse.
+
+> 🔒 **Matching redirect URI is required to prevent stolen codes from being replayed using a different redirect URI.**
+
+This becomes particularly important when the redirect URI uses a **dynamic port** (e.g., `http://127.0.0.1:38545/callback`), which may differ on every authorization flow. 
+Since the MCP server is responsible for redeeming the code, it must know the exact `redirect_uri` value used by the client.
+Thus, the client must include the redirect URI in its response to the MCP server.
+
+---
+### Why Use the `X-MCP-Authorization` Header?
+
+Using a custom header has several advantages:
+
+- **Separation of concerns**: Authorization metadata (code, redirect_uri) is isolated from the payload, avoiding pollution of application-level data structures.
+- **Avoids misuse of Bearer token semantics**: Since this is an *intermediate* OAuth step, it's cleaner to avoid mislabeling it as a full `Authorization: Bearer ...` token.
+
+---
+
+### Alternative Approaches Considered 
+
+#### 1. **Inline Metadata in Request Body or Payload**
+
+- Example:
+  ```json
+  {
+    "request": { ... },
     "_meta": {
       "authorization": {
-        "code": "xxxx..."
+        "code": "xyz",
+        "redirect_uri": "http://127.0.0.1:38545/callback"
       }
     }
   }
-}
-```
-
-Or in HTTP SSE mode, the client sends the authorization code in the `X-Authorization-Code` header of the SSE request.
-
-```json
-{
-  "X-Authorization-Code": "xxxx..."
-}
-````
-
-- The MCP server is responsible for securely storing and handling the  tokens. It should cache tokens per client/scope/resource,
-  use refresh_token or silent refresh flows as supported by the provider, implement PKCE for public clients (RFC 7636),
-  and ensure tokens are only sent to the correct MCP server/tool.
-- MCP server should follow secure storage and logging best practices.
 
 
 
 
 ## Security Considerations
 
-* Refresh tokens should be stored securely; MCP Server OAuth2 clients should follow best practices for token rotation and expiration.
+* Refresh tokens should be stored securely; MCP Server OAuth2 clients should follow best practices for token rotation
+  and expiration.
 * Servers MUST NOT log tokens or include them in error messages.
 * Servers MAY support token revocation and introspection (RFC 7662) to detect and respond to compromised tokens.
-
 
 ## References
 
@@ -456,9 +494,15 @@ Or in HTTP SSE mode, the client sends the authorization code in the `X-Authoriza
 
 ### Design Considerations and Trade-offs
 
-Initial proposals favored having clients handle the entire OAuth 2.0 flow and manage token storage. However, as @wdawson pointed out, this approach introduces security vulnerabilities (the "confused deputy" problem).
+Initial proposals favored having clients handle the entire OAuth 2.0 flow and manage token storage. However, as @wdawson
+pointed out, this approach introduces security vulnerabilities (the "confused deputy" problem).
 
-The updated design delegates token management to the MCP server, except for initiating the OAuth 2.0 authorization code flow: the server provides the client with the authorization endpoint, client ID, and PKCE parameters, and the client returns the authorization code. The MCP server then redeems the code to obtain an access token, caches it, and refreshes it as needed.
+The updated design delegates token management to the MCP server, except for initiating the OAuth 2.0 authorization code
+flow: the server provides the client with the authorization endpoint, client ID, and PKCE parameters, and the client
+returns the authorization code. The MCP server then redeems the code to obtain an access token, caches it, and refreshes
+it as needed.
 
-This proposal takes a pragmatic approach by treating the MCP client as an OAuth 2.0 client and the MCP server as an OAuth 2.0 resource server, leveraging standard flows and existing infrastructure. 
-In practice, agents acting on behalf of users are already trusted with user data and actions, so they are responsible for securely initiating the authorization flow. 
+This proposal takes a pragmatic approach by treating the MCP client as an OAuth 2.0 client and the MCP server as an
+OAuth 2.0 resource server, leveraging standard flows and existing infrastructure.
+In practice, agents acting on behalf of users are already trusted with user data and actions, so they are responsible
+for securely initiating the authorization flow. 
