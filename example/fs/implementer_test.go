@@ -43,11 +43,12 @@ func startServer() error {
 
 	resources := resource.NewFileSystem(config)
 
-	newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) {
+	newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) error {
 		assets, _ := resources.Resources(context.Background())
 		for _, asset := range assets {
 			implementer.RegisterResource(asset.Metadata, asset.Handler)
 		}
+		return nil
 	})
 	srv, err := server.New(
 		server.WithNewImplementer(newImplementer),

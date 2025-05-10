@@ -199,7 +199,7 @@ func isBinary(data []byte) bool {
 
 // New creates a new Implementer instance
 func New(config *Config) protoserver.NewImplementer {
-	return func(_ context.Context, notifier transport.Notifier, logger logger.Logger, client protoclient.Operations) protoserver.Implementer {
+	return func(_ context.Context, notifier transport.Notifier, logger logger.Logger, client protoclient.Operations) (protoserver.Implementer, error) {
 		base := protoserver.NewDefaultImplementer(notifier, logger, client)
 		ret := &Implementer{
 			fs:                 afs.New(),
@@ -208,6 +208,6 @@ func New(config *Config) protoserver.NewImplementer {
 			snapshot:           syncmap.NewMap[string, storage.Object](),
 		}
 		ret.ensureWatcher()
-		return ret
+		return ret, nil
 	}
 }

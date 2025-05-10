@@ -107,8 +107,9 @@ func startServer() error {
 		return err
 	}
 	terminalTool := tool.NewTool(goshService)
-	newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) {
+	newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) error {
 		serverproto.RegisterTool[*tool.TerminalCommand](implementer, "terminal", "Run terminal commands", terminalTool.Call)
+		return nil
 	})
 	var options = []server.Option{
 		server.WithAuthorizationPolicy(authConfig()),

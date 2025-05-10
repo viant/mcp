@@ -87,7 +87,7 @@ func main() {
     B int `json:"b"`
   }
   
-  newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) {
+  newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) error {
     // Register a simple resource
     implementer.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
       func(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
@@ -99,8 +99,9 @@ func main() {
       sum := input.A + input.B
       return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{{Text: fmt.Sprintf("%d", sum)}}}, nil
     }); err != nil {
-      panic(err)
+      return err
     }
+	return nil
   })
 
   srv, err := server.New(
