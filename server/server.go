@@ -41,7 +41,8 @@ func (s *Server) cancelOperation(id int) {
 
 // NewHandler creates a new handler instance
 func (s *Server) NewHandler(ctx context.Context, transport transport.Transport) transport.Handler {
-	return s.newHandler(ctx, transport)
+	handler := s.newHandler(ctx, transport)
+	return handler
 }
 
 func (s *Server) newHandler(ctx context.Context, transport transport.Transport) *Handler {
@@ -52,7 +53,7 @@ func (s *Server) newHandler(ctx context.Context, transport transport.Transport) 
 	}
 	ret.Logger = NewLogger(ret.loggerName, &ret.loggingLevel, ret.Notifier)
 	client := &Client{Transport: transport}
-	ret.implementer = s.newImplementer(ctx, transport, ret.Logger, client)
+	ret.implementer, ret.err = s.newImplementer(ctx, transport, ret.Logger, client)
 	return ret
 }
 

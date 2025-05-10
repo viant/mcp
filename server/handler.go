@@ -23,6 +23,7 @@ type Handler struct {
 	implementer      server.Implementer
 	authorizer       auth.Authorizer
 	initialized      bool
+	err              error
 }
 
 // Serve handles incoming JSON-RPC requests
@@ -32,7 +33,10 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 		response.Error = jsonrpc.NewInvalidRequest("invalid JSON-RPC version", nil)
 		return
 	}
-
+	if h.err != nil {
+		response.Error = jsonrpc.NewInternalError(h.err.Error(), nil)
+		return
+	}
 	switch request.Method {
 	case schema.MethodInitialize, schema.MethodPing:
 	case schema.MethodLoggingSetLevel:

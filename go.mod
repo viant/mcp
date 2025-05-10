@@ -5,11 +5,11 @@ go 1.23.8
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/stretchr/testify v1.10.0
-	github.com/viant/afs v1.25.1-0.20231110184132-877ed98abca1
+	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1
 	github.com/viant/jsonrpc v0.5.0
-	github.com/viant/mcp-protocol v0.2.0
-	golang.org/x/oauth2 v0.28.0
+	github.com/viant/mcp-protocol v0.3.0
+	golang.org/x/oauth2 v0.30.0
 )
 
 require (
@@ -22,11 +22,10 @@ require (
 	github.com/viant/scy v0.15.4 // indirect
 	github.com/viant/toolbox v0.36.0 // indirect
 	github.com/viant/xreflect v0.6.2 // indirect
-	github.com/viant/xunsafe v0.9.3-0.20240530173106-69808f27713b // indirect
-	golang.org/x/crypto v0.26.0 // indirect
+	github.com/viant/xunsafe v0.10.3 // indirect
+	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/mod v0.17.0 // indirect
-	golang.org/x/sys v0.23.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
