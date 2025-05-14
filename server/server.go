@@ -7,6 +7,7 @@ import (
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp-protocol/syncmap"
+	"github.com/viant/mcp/client"
 	"github.com/viant/mcp/server/auth"
 )
 
@@ -55,6 +56,13 @@ func (s *Server) newHandler(ctx context.Context, transport transport.Transport) 
 	client := &Client{Transport: transport}
 	ret.implementer, ret.err = s.newImplementer(ctx, transport, ret.Logger, client)
 	return ret
+}
+
+// AsClient returns a client.Interface implementation that uses this server directly
+func (s *Server) AsClient(ctx context.Context) client.Interface {
+	// Create a handler with a nil transport
+	handler := s.newHandler(ctx, nil)
+	return NewAdapter(handler)
 }
 
 // New creates a new Server instance

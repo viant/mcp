@@ -38,6 +38,7 @@ func (s *AuthServer) RegisterHandlers(mux *http.ServeMux) {
 
 func (s *AuthServer) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		if s.shouldBypass(r) {
 			next.ServeHTTP(w, r)
 			return
@@ -72,11 +73,12 @@ func (s *AuthServer) extractJSONRPCRequest(r *http.Request) ([]byte, *jsonrpc.Re
 	}
 	defer r.Body.Close()
 
-	jRequest := &jsonrpc.Request{}
+	type jsonrpcRequest jsonrpc.Request
+	jRequest := &jsonrpcRequest{}
 	if err := json.Unmarshal(data, jRequest); err != nil {
 		return nil, nil, err
 	}
-	return data, jRequest, nil
+	return data, (*jsonrpc.Request)(jRequest), nil
 }
 
 func (s *AuthServer) resolveAuthorizationRule(jRequest *jsonrpc.Request) (*authorization.Authorization, string) {
@@ -95,6 +97,8 @@ func (s *AuthServer) resolveAuthorizationRule(jRequest *jsonrpc.Request) (*autho
 				return rule, "tool/" + params.Name
 			}
 		}
+	default:
+		return nil, ""
 	}
 	return s.Policy.Global, ""
 }
