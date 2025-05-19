@@ -11,7 +11,7 @@ import (
 
 // FallbackAuth is a fallback authorization interceptor
 type FallbackAuth struct {
-	Strict        *AuthServer
+	Strict        *Service
 	TokenSource   authorization.ProtectedResourceTokenSource
 	IdTokenSource authorization.IdTokenSource
 }
@@ -29,11 +29,19 @@ func (a *FallbackAuth) EnsureAuthorized(ctx context.Context, request *jsonrpc.Re
 	if err = json.Unmarshal(response.Error.Data, &anAuthorization); err != nil {
 		return nil, err
 	}
+
+	tkn, err := a.Token(ctx, &anAuthorization)
+	if tkn != nil {
+		response.Error = nil
+	}
+	return tkn, err
+}
+
+func (a *FallbackAuth) Token(ctx context.Context, anAuthorization *authorization.Authorization) (*authorization.Token, error) {
 	oToken, err := a.TokenSource.ProtectedResourceToken(ctx, anAuthorization.ProtectedResourceMetadata, strings.Join(anAuthorization.RequiredScopes, " "))
 	if err != nil {
 		return nil, err
 	}
-
 	if anAuthorization.UseIdToken {
 		oToken, err = a.IdTokenSource.IdToken(ctx, oToken, anAuthorization.ProtectedResourceMetadata)
 		if err != nil {
@@ -41,14 +49,12 @@ func (a *FallbackAuth) EnsureAuthorized(ctx context.Context, request *jsonrpc.Re
 		}
 	}
 	tokenString := oToken.AccessToken
-	token = &authorization.Token{
+	return &authorization.Token{
 		Token: tokenString,
-	}
-	response.Error = nil
-	return token, nil
+	}, nil
 }
 
-func NewFallbackAuth(authServer *AuthServer, tokenSource authorization.ProtectedResourceTokenSource, idTokenSource authorization.IdTokenSource) *FallbackAuth {
+func NewFallbackAuth(authServer *Service, tokenSource authorization.ProtectedResourceTokenSource, idTokenSource authorization.IdTokenSource) *FallbackAuth {
 	return &FallbackAuth{
 		Strict:        authServer,
 		TokenSource:   tokenSource,

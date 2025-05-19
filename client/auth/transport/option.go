@@ -2,8 +2,8 @@ package transport
 
 import (
 	"github.com/viant/mcp-protocol/authorization"
-	"github.com/viant/mcp/client/auth/flow"
 	"github.com/viant/mcp/client/auth/store"
+	"github.com/viant/scy/auth/flow"
 )
 
 type Option func(*RoundTripper)

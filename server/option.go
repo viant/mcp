@@ -1,40 +1,43 @@
 package server
 
 import (
-	"fmt"
-	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp/server/auth"
+	"net/http"
 )
 
 // Option is a function that configures the server.
 type Option func(s *Server) error
 
-// WithCapabilities sets the server capabilities.
-func WithCapabilities(capabilities schema.ServerCapabilities) Option {
+// WithCORS adds a new CORS handler to the server.
+func WithCORS(cors *Cors) Option {
 	return func(s *Server) error {
-		s.capabilities = capabilities
+		handler := &corsHandler{Cors: cors}
+		s.corsHandler = handler.Middleware
 		return nil
 	}
 }
 
-// WithAuthorizationPolicy accepts authentication policy (no-op stub).
-func WithAuthorizationPolicy(policy *authorization.Policy) Option {
-	return func(s *Server) (err error) {
-		if s.auth, err = auth.NewAuthServer(policy); err != nil {
-			return fmt.Errorf("unable to create auth server %v: %v", policy, err)
-		}
-		if s.auth.Policy.IsFineGrained() && s.authorizer == nil {
-			s.authorizer = s.auth.EnsureAuthorized
-		}
+func WithProtectedResourcesHandler(handler http.HandlerFunc) Option {
+	return func(s *Server) error {
+		s.protectedResourcesHandler = handler
 		return nil
 	}
 }
 
-func WithAuthorizer(authorizer auth.Authorizer) Option {
+// WithAuthorizer adds a new authorizer to the server.
+func WithAuthorizer(authorizer Middleware) Option {
 	return func(s *Server) error {
 		s.authorizer = authorizer
+		return nil
+	}
+}
+
+// WithJRPCAuthorizer adds a new JRPCAuthorizer to the server.
+func WithJRPCAuthorizer(authorizer auth.JRPCAuthorizer) Option {
+	return func(s *Server) error {
+		s.jRPCAuthorizer = authorizer
 		return nil
 	}
 }

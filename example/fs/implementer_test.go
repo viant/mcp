@@ -53,19 +53,18 @@ func startServer() error {
 	srv, err := server.New(
 		server.WithNewImplementer(newImplementer),
 		server.WithImplementation(schema.Implementation{"FS", "0.1"}),
-		server.WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
 	)
 
 	if err != nil {
 		return err
 	}
-	endpoint := srv.HTTP(context.Background(), ":4981")
+	endpoint := srv.HTTP(context.Background(), ":4982")
 	return endpoint.ListenAndServe()
 }
 
 func runClient(t *testing.T) error {
 	ctx := context.Background()
-	transport, err := sse.New(ctx, "http://localhost:4981/sse", sse.WithListener(func(msg *jsonrpc.Message) {
+	transport, err := sse.New(ctx, "http://localhost:4982/sse", sse.WithListener(func(msg *jsonrpc.Message) {
 		data, _ := json.Marshal(msg)
 		fmt.Println(string(data))
 	}))

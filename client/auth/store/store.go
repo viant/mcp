@@ -6,6 +6,7 @@ import (
 	"github.com/viant/afs/url"
 	"github.com/viant/mcp-protocol/oauth2/meta"
 	"golang.org/x/oauth2"
+	"strings"
 	"sync"
 )
 
@@ -32,7 +33,7 @@ type MemoryStoreOption func(*memoryStore)
 func WithClientConfig(client *oauth2.Config) MemoryStoreOption {
 	return func(m *memoryStore) {
 		issuer, _ := url.Base(client.Endpoint.AuthURL, http.SecureScheme)
-		m.clients[issuer] = client
+		m.clients[normalizeIssuer(issuer)] = client
 	}
 }
 
@@ -65,27 +66,33 @@ func (m *memoryStore) AddToken(key TokenKey, token *oauth2.Token) error {
 	return nil
 }
 
-func (m *memoryStore) LookupClientConfig(iss string) (*oauth2.Config, bool) {
+func (m *memoryStore) LookupClientConfig(issuer string) (*oauth2.Config, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	if m.clients != nil {
-		if id, ok := m.clients[iss]; ok {
+		if id, ok := m.clients[normalizeIssuer(issuer)]; ok {
 			return id, true
 		}
 	}
 	return nil, false
 }
+
+func normalizeIssuer(iss string) string {
+	return strings.TrimRight(iss, "/")
+}
+
 func (m *memoryStore) AddClientConfig(issuer string, client *oauth2.Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.clients[issuer] = client
+	m.clients[normalizeIssuer(issuer)] = client
 	return nil
 }
 
 func (m *memoryStore) AddAuthorizationServerMetadata(metadata *meta.AuthorizationServerMetadata) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.issuerMetadata[metadata.Issuer] = metadata
+	m.issuerMetadata[normalizeIssuer(metadata.Issuer)] = metadata
 	return nil
 }
 
@@ -93,7 +100,7 @@ func (m *memoryStore) LookupAuthorizationServerMetadata(issuer string) (*meta.Au
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.issuerMetadata != nil {
-		if metadata, ok := m.issuerMetadata[issuer]; ok {
+		if metadata, ok := m.issuerMetadata[normalizeIssuer(issuer)]; ok {
 			return metadata, true
 		}
 	}
@@ -106,7 +113,8 @@ func (m *memoryStore) AddIssuerPublicKeys(issuer string, keys map[string]crypto.
 	if m.issuerPublicKeys == nil {
 		m.issuerPublicKeys = map[string]map[string]crypto.PublicKey{}
 	}
-	m.issuerPublicKeys[issuer] = keys
+
+	m.issuerPublicKeys[normalizeIssuer(issuer)] = keys
 	return nil
 }
 
@@ -114,7 +122,7 @@ func (m *memoryStore) LookupIssuerPublicKeys(issuer string) (map[string]crypto.P
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.issuerPublicKeys != nil {
-		if keys, ok := m.issuerPublicKeys[issuer]; ok {
+		if keys, ok := m.issuerPublicKeys[normalizeIssuer(issuer)]; ok {
 			return keys, true
 		}
 	}

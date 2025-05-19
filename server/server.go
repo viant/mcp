@@ -9,26 +9,21 @@ import (
 	"github.com/viant/mcp-protocol/syncmap"
 	"github.com/viant/mcp/client"
 	"github.com/viant/mcp/server/auth"
+	"net/http"
 )
 
 // Server represents MCP protocol handler
 type Server struct {
-	activeContexts *syncmap.Map[int, *activeContext]
-	capabilities   schema.ServerCapabilities
-	info           schema.Implementation
-	newImplementer server.NewImplementer
-
-	instructions    *string
-	protocolVersion string
-	loggerName      string
-	meta            map[string]interface{}
-
-	// auth handles OAuth2 authorization for incoming requests
-	auth *auth.AuthServer
-
-	//fine grained authorization
-	authorizer auth.Authorizer
-
+	activeContexts            *syncmap.Map[int, *activeContext]
+	info                      schema.Implementation
+	newImplementer            server.NewImplementer
+	instructions              *string
+	protocolVersion           string
+	loggerName                string
+	protectedResourcesHandler http.HandlerFunc
+	corsHandler               func(next http.Handler) http.Handler
+	authorizer                func(next http.Handler) http.Handler
+	jRPCAuthorizer            auth.JRPCAuthorizer
 	stdioServer
 	sseServer
 }
@@ -50,11 +45,11 @@ func (s *Server) newHandler(ctx context.Context, transport transport.Transport) 
 	ret := &Handler{
 		Server:     s,
 		Notifier:   transport,
-		authorizer: s.authorizer,
+		authorizer: s.jRPCAuthorizer,
 	}
 	ret.Logger = NewLogger(ret.loggerName, &ret.loggingLevel, ret.Notifier)
-	client := &Client{Transport: transport}
-	ret.implementer, ret.err = s.newImplementer(ctx, transport, ret.Logger, client)
+	aClient := &Client{Transport: transport}
+	ret.implementer, ret.err = s.newImplementer(ctx, transport, ret.Logger, aClient)
 	return ret
 }
 
@@ -67,9 +62,9 @@ func (s *Server) AsClient(ctx context.Context) client.Interface {
 
 // New creates a new Server instance
 func New(options ...Option) (*Server, error) {
+	corsHandler := &corsHandler{defaultCors()}
 	// initialize server
 	s := &Server{
-		capabilities: schema.ServerCapabilities{},
 		info: schema.Implementation{
 			Name:    "MCP",
 			Version: "0.1",
@@ -77,13 +72,13 @@ func New(options ...Option) (*Server, error) {
 		loggerName:      "server",
 		protocolVersion: schema.LatestProtocolVersion,
 		activeContexts:  syncmap.NewMap[int, *activeContext](),
+		corsHandler:     corsHandler.Middleware,
 	}
 	for _, option := range options {
 		if err := option(s); err != nil {
 			return nil, err
 		}
 	}
-
 	if s.newImplementer == nil {
 		return nil, errors.New("no implementer specified")
 	}

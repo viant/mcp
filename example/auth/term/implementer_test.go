@@ -14,12 +14,13 @@ import (
 	"github.com/viant/mcp-protocol/schema"
 	serverproto "github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp/client"
-	"github.com/viant/mcp/client/auth/flow"
 	"github.com/viant/mcp/client/auth/mock"
 	"github.com/viant/mcp/client/auth/store"
 	"github.com/viant/mcp/client/auth/transport"
 	"github.com/viant/mcp/example/tool"
 	"github.com/viant/mcp/server"
+	"github.com/viant/mcp/server/auth"
+	"github.com/viant/scy/auth/flow"
 	"net/http"
 	"testing"
 	"time"
@@ -102,21 +103,15 @@ func startServer() error {
 		return err
 	})
 
+	authService, err := authorizationService()
+	if err != nil {
+		return err
+	}
 	var options = []server.Option{
-		server.WithAuthorizationPolicy(&authorization.Policy{
-			ExcludeURI: "/sse",
-			Global: &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
-				Resource: "http://localhost:4981",
-				AuthorizationServers: []string{
-					"http://localhost:8089/",
-				}},
-			},
-		}),
+		server.WithAuthorizer(authService.Middleware),
+		server.WithProtectedResourcesHandler(authService.ProtectedResourcesHandler),
 		server.WithNewImplementer(newImplementer),
 		server.WithImplementation(schema.Implementation{"MCP Terminal", "0.1"}),
-		server.WithCapabilities(schema.ServerCapabilities{
-			Resources: &schema.ServerCapabilitiesResources{},
-		}),
 	}
 	srv, err := server.New(options...)
 
@@ -124,19 +119,37 @@ func startServer() error {
 		return err
 	}
 	ctx := context.Background()
-	endpoint := srv.HTTP(ctx, ":4981")
+	endpoint := srv.HTTP(ctx, ":4984")
 	return endpoint.ListenAndServe()
 }
 
 func getHttpTransport(ctx context.Context) (*sse.Client, error) {
+
 	aStore := store.NewMemoryStore(store.WithClientConfig(mock.NewTestClient("http://localhost:8089")))
 	roundTripper, err := transport.New(transport.WithStore(aStore), transport.WithAuthFlow(flow.NewOutOfBandFlow()))
 	httpClient := &http.Client{Transport: roundTripper}
-	sseTransport, err := sse.New(ctx, "http://localhost:4981/sse",
-		sse.WithRPCHTTPClient(httpClient),
+
+	sseTransport, err := sse.New(ctx, "http://localhost:4984/sse",
+		sse.WithMessageHttpClient(httpClient),
 		sse.WithListener(func(message *jsonrpc.Message) {
 			data, err := json.Marshal(message)
 			fmt.Printf("data: %v %v %+v\n", string(data), err, message)
 		}))
 	return sseTransport, err
+}
+
+func authorizationService() (*auth.Service, error) {
+	policy := &authorization.Policy{
+		ExcludeURI: "/sse",
+		Tools: map[string]*authorization.Authorization{ //tool level
+			"terminal": &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
+				Resource: "http://localhost:4984",
+				AuthorizationServers: []string{
+					"http://localhost:8089/",
+				}},
+				RequiredScopes: []string{"openid", "profile", "email"},
+			},
+		},
+	}
+	return auth.New(&auth.Config{Policy: policy})
 }

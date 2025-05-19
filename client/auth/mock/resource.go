@@ -12,7 +12,7 @@ func (m *AuthorizationService) defaultResourceHandler(w http.ResponseWriter, r *
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		w.Header().Set("WWW-Authenticate", fmt.Sprintf(
-			`Bearer realm="%s", scope="resource", authorization_server="%s"`,
+			`Bearer realm="%s", scope="resource", resource_metadata="%s"`,
 			m.Issuer, m.Issuer))
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return

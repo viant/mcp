@@ -42,8 +42,8 @@ func New() server.NewImplementer {
 		notifier transport.Notifier,
 		logger logger.Logger,
 		client client.Operations,
-	) server.Implementer {
+	) (server.Implementer, error) {
 		base := server.NewDefaultImplementer(notifier, logger, client)
-		return &MyImplementer{DefaultImplementer: base}
+		return &MyImplementer{DefaultImplementer: base}, nil
 	}
 }

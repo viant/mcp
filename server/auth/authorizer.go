@@ -4,27 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/viant/jsonrpc"
-	authschema "github.com/viant/mcp-protocol/authorization"
+	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/schema"
 )
 
-// Authorizer is an interceptor function for JSON-RPC calls that returns
+// JRPCAuthorizer is an interceptor function for JSON-RPC calls that returns
 // a Token when authorization is successful or nil otherwise.
-type Authorizer func(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) (*authschema.Token, error)
+type JRPCAuthorizer func(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) (*authorization.Token, error)
 
 // EnsureAuthorized checks if a request is authorized.
-func (s *AuthServer) EnsureAuthorized(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) (*authschema.Token, error) {
+func (s *Service) EnsureAuthorized(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) (*authorization.Token, error) {
 	if response.Error != nil {
 		return nil, nil
 	}
 
-	var p authschema.WithMeta
+	var p authorization.WithMeta
 	// Parse the JSON-RPC params into the WithAuthMeta wrapper
 	if !schema.MustParseParams(request, response, &p) {
 		return nil, nil
 	}
 
 	var token string
+	if value := ctx.Value(authorization.TokenKey); value != nil {
+		if _, ok := value.(*authorization.Token); ok { //token is already in context
+			return nil, nil
+		}
+	}
 	if p.AuthMeta.Authorization != nil {
 		token = p.AuthMeta.Authorization.Token
 	}
@@ -54,7 +59,7 @@ func (s *AuthServer) EnsureAuthorized(ctx context.Context, request *jsonrpc.Requ
 	return nil, nil
 }
 
-func (s *AuthServer) unauthorized(resp *jsonrpc.Response, meta *authschema.Authorization) {
+func (s *Service) unauthorized(resp *jsonrpc.Response, meta *authorization.Authorization) {
 	if meta == nil {
 		return // the tool/resource isn’t protected → silently allow
 	}

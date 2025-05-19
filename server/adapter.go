@@ -264,13 +264,11 @@ func (a *Adapter) Subscribe(ctx context.Context, params *schema.SubscribeRequest
 	if response.Error != nil {
 		return nil, response.Error
 	}
-
 	var result schema.SubscribeResult
 	err = json.Unmarshal(response.Result, &result)
 	if err != nil {
 		return nil, err
 	}
-
 	return &result, nil
 }
 

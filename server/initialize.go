@@ -19,9 +19,8 @@ func (h *Handler) Initialize(ctx context.Context, request *jsonrpc.Request) (*sc
 	result := schema.InitializeResult{
 		ProtocolVersion: protoVersion,
 		ServerInfo:      h.info,
-		Capabilities:    h.capabilities,
+		Capabilities:    schema.ServerCapabilities{},
 		Instructions:    h.instructions,
-		Meta:            h.meta,
 	}
 	h.implementer.Initialize(ctx, h.clientInitialize, &result)
 	return &result, nil

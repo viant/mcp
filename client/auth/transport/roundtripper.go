@@ -2,16 +2,14 @@ package transport
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/viant/mcp-protocol/authorization"
-	meta "github.com/viant/mcp-protocol/oauth2/meta"
-	flow2 "github.com/viant/mcp/client/auth/flow"
+	"github.com/viant/mcp-protocol/oauth2/meta"
 	"github.com/viant/mcp/client/auth/store"
+	"github.com/viant/scy/auth/flow"
 	"golang.org/x/oauth2"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 )
@@ -20,8 +18,8 @@ type RoundTripper struct {
 	Global          *authorization.Authorization
 	store           store.Store
 	scopper         Scopper
-	authFlow        flow2.AuthFlow
-	authFlowOptions []flow2.Option
+	authFlow        flow.AuthFlow
+	authFlowOptions []flow.Option
 	transport       http.RoundTripper
 	mux             sync.Mutex
 }
@@ -30,7 +28,7 @@ func New(options ...Option) (*RoundTripper, error) {
 	ret := &RoundTripper{
 		transport: http.DefaultTransport,
 		store:     store.NewMemoryStore(),
-		authFlow:  &flow2.BrowserFlow{},
+		authFlow:  &flow.BrowserFlow{},
 		scopper:   &nopScopper{},
 	}
 
@@ -60,9 +58,8 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Close the prior body so we don’t leak.
 	resp.Body.Close()
 
-	// 3) Otherwise—we got a 401 → do the OAuth dance:
-	ctx := context.WithValue(req.Context(), ContextRequestKey, req.URL)
-	tok, err := r.Token(ctx)
+	ctx := req.Context()
+	tok, err := r.Token(ctx, resp)
 	if err != nil {
 		return nil, err
 	}
@@ -80,16 +77,11 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return r.transport.RoundTrip(retry)
 }
 
-func (r *RoundTripper) Token(ctx context.Context) (*oauth2.Token, error) {
+func (r *RoundTripper) Token(ctx context.Context, resp *http.Response) (*oauth2.Token, error) {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
-	reqURL, ok := ctx.Value(ContextRequestKey).(*url.URL)
-	if !ok {
-		return nil, errors.New("authServer discovery needs request URL in context")
-	}
-
-	authServerMetadata, err := r.loadProtectedResourceMetadata(ctx, reqURL)
+	authServerMetadata, err := r.loadProtectedResourceMetadata(ctx, resp)
 	if err != nil {
 		return nil, err
 	}
@@ -164,23 +156,7 @@ func (r *RoundTripper) refreshToken(ctx context.Context, clientConfig *oauth2.Co
 	return nil
 }
 
-func (r *RoundTripper) loadProtectedResourceMetadata(ctx context.Context, target *url.URL) (*meta.ProtectedResourceMetadata, error) {
-	// ❶ Send *exactly* the same request but without Authorization header.
-	probe := &http.Request{
-		Method: http.MethodGet, // use GET; HEAD may not trigger auth challenge
-		URL:    target,
-		Header: make(http.Header),
-	}
-	probe = probe.WithContext(ctx)
-	resp, err := r.transport.RoundTrip(probe)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		return nil, errors.New("expected 401 for authServer discovery")
-	}
+func (r *RoundTripper) loadProtectedResourceMetadata(ctx context.Context, resp *http.Response) (*meta.ProtectedResourceMetadata, error) {
 
 	// ❷ Parse WWW‑Authenticate header.
 	protectedResourceMetadataURL, err := parseAuthenticateHeader(resp)

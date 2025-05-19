@@ -2,18 +2,16 @@ package transport
 
 import (
 	"context"
-	"github.com/viant/mcp/client/auth/flow"
+	"github.com/viant/scy/auth/flow"
 	"strings"
 )
 
 type (
-	contextRequestKey string
-	contextScopeKey   string
+	contextScopeKey string
 )
 
 const (
-	ContextRequestKey    contextRequestKey = "request"
-	ContextFlowOptionKey contextScopeKey   = "authFlowOptions"
+	ContextFlowOptionKey contextScopeKey = "authFlowOptions"
 )
 
 func getAuthFlowOptions(ctx context.Context) []flow.Option {

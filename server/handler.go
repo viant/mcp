@@ -21,7 +21,7 @@ type Handler struct {
 	clientInitialize *schema.InitializeRequestParams
 	loggingLevel     schema.LoggingLevel
 	implementer      server.Implementer
-	authorizer       auth.Authorizer
+	authorizer       auth.JRPCAuthorizer //note that http level authorized is implemented as middleware
 	initialized      bool
 	err              error
 }

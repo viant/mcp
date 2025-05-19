@@ -7,8 +7,9 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1
-	github.com/viant/jsonrpc v0.5.1
-	github.com/viant/mcp-protocol v0.3.1
+	github.com/viant/jsonrpc v0.5.3
+	github.com/viant/mcp-protocol v0.3.2
+	github.com/viant/scy v0.23.1
 	golang.org/x/oauth2 v0.30.0
 )
 
@@ -19,7 +20,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/viant/scy v0.15.4 // indirect
 	github.com/viant/toolbox v0.36.0 // indirect
 	github.com/viant/xreflect v0.6.2 // indirect
 	github.com/viant/xunsafe v0.10.3 // indirect

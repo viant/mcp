@@ -13,23 +13,24 @@ import (
 	"github.com/viant/mcp-protocol/oauth2/meta"
 	serverproto "github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp/example/tool"
+	"github.com/viant/mcp/server/auth"
 
 	"github.com/viant/mcp-protocol/schema"
 
 	"github.com/viant/mcp/client"
-	"github.com/viant/mcp/client/auth"
-	"github.com/viant/mcp/client/auth/flow"
+	clientauth "github.com/viant/mcp/client/auth"
 	"github.com/viant/mcp/client/auth/mock"
 	"github.com/viant/mcp/client/auth/store"
 	"github.com/viant/mcp/client/auth/transport"
 	"github.com/viant/mcp/server"
+	"github.com/viant/scy/auth/flow"
 	"net/http"
 	"testing"
 	"time"
 )
 
 func TestNew(t *testing.T) {
-	//t.Skip("Skipping auth example experimental tests until OAuth support is refactored")
+	//t.Skip("Skipping clientauth example experimental tests until OAuth support is refactored")
 	go func() {
 		err := startAuthorizer()
 		if err != nil {
@@ -59,10 +60,13 @@ func runClient(t *testing.T) error {
 	if err != nil {
 		return err
 	}
-	authorizer := &auth.Authorizer{Transport: roundTripper}
+	authorizer := &clientauth.Authorizer{Transport: roundTripper}
 
 	// Create a new aClient
-	aClient := client.New("tester", "0.1", aTransport, client.WithCapabilities(schema.ClientCapabilities{}), client.WithAuthInterceptor(authorizer))
+	aClient := client.New("tester", "0.1", aTransport,
+		client.WithCapabilities(schema.ClientCapabilities{}),
+		client.WithAuthInterceptor(authorizer))
+
 	initResult, err := aClient.Initialize(ctx)
 	if err != nil {
 		return err
@@ -111,18 +115,23 @@ func startServer() error {
 		serverproto.RegisterTool[*tool.TerminalCommand](implementer, "terminal", "Run terminal commands", terminalTool.Call)
 		return nil
 	})
+
+	authService, err := authorizationService()
+	if err != nil {
+		return err
+	}
+
 	var options = []server.Option{
-		server.WithAuthorizationPolicy(authConfig()),
+		server.WithJRPCAuthorizer(authService.EnsureAuthorized),
 		server.WithNewImplementer(newImplementer),
 		server.WithImplementation(schema.Implementation{"MCP Terminal", "0.1"}),
-		server.WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
 	}
 	srv, err := server.New(options...)
 	if err != nil {
 		return err
 	}
 	ctx := context.Background()
-	endpoint := srv.HTTP(ctx, ":4981")
+	endpoint := srv.HTTP(ctx, ":4983")
 	return endpoint.ListenAndServe()
 }
 
@@ -130,8 +139,8 @@ func getHttpTransport(ctx context.Context) (*sse.Client, error) {
 	roundTripper, err := getRoundTripper()
 	httpClient := &http.Client{Transport: roundTripper}
 
-	sseTransport, err := sse.New(ctx, "http://localhost:4981/sse",
-		sse.WithRPCHTTPClient(httpClient),
+	sseTransport, err := sse.New(ctx, "http://localhost:4983/sse",
+		sse.WithMessageHttpClient(httpClient),
 		sse.WithListener(func(message *jsonrpc.Message) {
 			data, err := json.Marshal(message)
 			fmt.Printf("data: %v %v %+v\n", string(data), err, message)
@@ -145,12 +154,12 @@ func getRoundTripper() (*transport.RoundTripper, error) {
 	return roundTripper, err
 }
 
-func authConfig() *authorization.Policy {
-	return &authorization.Policy{
+func authorizationService() (*auth.Service, error) {
+	policy := &authorization.Policy{
 		ExcludeURI: "/sse",
 		Tools: map[string]*authorization.Authorization{ //tool level
 			"terminal": &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
-				Resource: "http://localhost:4981",
+				Resource: "http://localhost:4983",
 				AuthorizationServers: []string{
 					"http://localhost:8089/",
 				}},
@@ -158,4 +167,5 @@ func authConfig() *authorization.Policy {
 			},
 		},
 	}
+	return auth.New(&auth.Config{Policy: policy})
 }

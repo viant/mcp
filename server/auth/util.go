@@ -55,3 +55,14 @@ func extractProtoAndHost(r *http.Request) (proto, host string) {
 
 	return proto, host
 }
+
+func extractFromHeader(header string, key string) string {
+	for _, part := range strings.Split(header, ",") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, key+"=") {
+			return strings.Trim(strings.TrimPrefix(part, key+"="), "\"")
+
+		}
+	}
+	return ""
+}

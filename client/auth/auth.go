@@ -63,17 +63,17 @@ func injectToken(request *jsonrpc.Request, token *oauth2.Token) (*jsonrpc.Reques
 		paramMeta = make(map[string]interface{})
 		params["_meta"] = paramMeta
 	}
-	var authorization map[string]interface{}
+	var authorizationMetadata map[string]interface{}
 	authorizationValue, ok := paramMeta["authorization"]
 	if ok {
-		authorization = authorizationValue.(map[string]interface{})
+		authorizationMetadata = authorizationValue.(map[string]interface{})
 	} else {
-		authorization = make(map[string]interface{})
-		paramMeta["authorization"] = authorization
+		authorizationMetadata = make(map[string]interface{})
+		paramMeta["authorization"] = authorizationMetadata
 	}
 
 	accessTokenValue := token.AccessToken
-	authorization["token"] = accessTokenValue
+	authorizationMetadata["token"] = accessTokenValue
 	next := *request
 	if next.Params, err = json.Marshal(params); err != nil {
 		return nil, err

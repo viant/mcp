@@ -107,7 +107,6 @@ func main() {
   srv, err := server.New(
     server.WithNewImplementer(newImplementer),
     server.WithImplementation(schema.Implementation{"default", "1.0"}),
-    server.WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
   )
   if err != nil {
     log.Fatalf("Failed to create server: %v", err)
