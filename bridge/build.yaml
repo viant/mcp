@@ -1,0 +1,24 @@
+init:
+  target:
+    URL: ssh://127.0.0.1
+    Credentials: localhost
+  appPath: $WorkingDirectory(./..)
+  Ver: $Cat(${appPath}/Version)
+
+pipeline:
+  build:
+    action: exec:run
+    checkError: true
+    commands:
+      - cd ${appPath}/bridge
+      - export GOOS=linux
+      - export GOARCH=amd64
+      - go build -ldflags="-X 'main.Version=${Ver}'" -trimpath -o mcpb .
+      - tar cvzf mcpb_linux_amd64_${Ver}.tar.gz mcpb
+      - export GOOS=darwin
+      - go build -ldflags="-X 'main.Version=${Ver}'" -trimpath -o mcpb .
+      - tar cvzf mcpb_darwin_amd64_${Ver}.tar.gz mcpb
+      - export GOOS=darwin
+      - export GOARCH=arm64
+      - go build -ldflags="-X 'main.Version=${Ver}'" -trimpath -o mcpb .
+      - tar cvzf mcpb_darwin_arm64_${Ver}.tar.gz mcpb

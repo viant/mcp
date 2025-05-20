@@ -1,4 +1,4 @@
-package bridge
+package mcp
 
 type Options struct {
 	URL             string `short:"u" long:"url" description:"mcp url" required:"true"`
