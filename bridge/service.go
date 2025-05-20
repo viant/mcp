@@ -2,6 +2,9 @@ package bridge
 
 import (
 	"context"
+	"github.com/viant/afs/url"
+	"github.com/viant/mcp-protocol/authorization"
+	"github.com/viant/mcp-protocol/oauth2/meta"
 	"github.com/viant/mcp/client/auth/store"
 	"github.com/viant/scy/auth/authorizer"
 	"github.com/viant/scy/auth/flow"
@@ -178,7 +181,20 @@ func New(ctx context.Context, cfg *Options) (*Service, error) {
 			return nil, err
 		}
 		aStore := store.NewMemoryStore(store.WithClientConfig(oAuthConfig.Config))
-		roundTripper, err := authtransport.New(authtransport.WithStore(aStore), authtransport.WithAuthFlow(flow.NewBrowserFlow()))
+
+		issuer, _ := url.Base(oAuthConfig.Config.Endpoint.AuthURL, "https")
+
+		var authTransportOptions = []authtransport.Option{
+			authtransport.WithStore(aStore),
+			authtransport.WithAuthFlow(flow.NewBrowserFlow()),
+			authtransport.WithGlobalResource(&authorization.Authorization{
+				UseIdToken: true,
+				ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
+					AuthorizationServers: []string{issuer},
+				},
+			}),
+		}
+		roundTripper, err := authtransport.New(authTransportOptions...)
 		if err != nil {
 			return nil, err
 		}
