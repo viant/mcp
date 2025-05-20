@@ -4,6 +4,7 @@ go 1.23.8
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
+	github.com/jessevdk/go-flags v1.5.0
 	github.com/stretchr/testify v1.10.0
 	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1

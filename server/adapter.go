@@ -34,7 +34,7 @@ func (a *Adapter) Initialize(ctx context.Context) (*schema.InitializeResult, err
 		return nil, err
 	}
 
-	// Send initialized notification
+	// Send Initialized notification
 	a.handler.OnNotification(ctx, &jsonrpc.Notification{Method: schema.MethodNotificationInitialized})
 
 	return &result, nil

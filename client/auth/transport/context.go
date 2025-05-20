@@ -19,6 +19,7 @@ func getAuthFlowOptions(ctx context.Context) []flow.Option {
 	if value := ctx.Value(ContextFlowOptionKey); value != nil {
 		options, _ = value.([]flow.Option)
 	}
+	options = append(options, flow.WithPKCE(true))
 	return options
 }
 
