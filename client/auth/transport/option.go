@@ -28,3 +28,16 @@ func WithGlobalResource(global *authorization.Authorization) Option {
 		t.Global = global
 	}
 }
+
+func WithBackendForFrontendAuth() Option {
+	return func(t *RoundTripper) {
+		t.useBFF = true
+	}
+}
+
+func WithAuthorizationExchangeHeader(name string) Option {
+	return func(t *RoundTripper) {
+		t.useBFF = true
+		t.bffHeader = name
+	}
+}

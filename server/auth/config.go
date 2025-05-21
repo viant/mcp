@@ -19,7 +19,7 @@ func (c *Config) IsJSONRPCMediationMode() bool {
 
 // BackendForFrontend is used to support the backend-to-frontend flow
 type BackendForFrontend struct {
-	Client         *oauth2.Config
-	RedirectURI    string
-	AuthCodeHeader string
+	Client                      *oauth2.Config
+	RedirectURI                 string
+	AuthorizationExchangeHeader string
 }

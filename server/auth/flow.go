@@ -19,7 +19,10 @@ func (s *Service) ensureResourceToken(r *http.Request, rule *authorization.Autho
 		token = value
 	}
 	if token == nil {
-		token, err = s.handleAuthCode(r) //try to get from backend-to-frontend flow
+		token, err = s.handleAuthorizationExchange(r) //try to get from backend-to-frontend flow
+		if token != nil {
+			s.resourceToken.Put(resourceKey, token)
+		}
 	}
 	if err != nil || token == nil {
 		return err

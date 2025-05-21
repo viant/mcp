@@ -5,13 +5,12 @@ import (
 	"github.com/viant/afs/url"
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
+	"github.com/viant/mcp/client"
 	"github.com/viant/mcp/client/auth/store"
+	mcpserver "github.com/viant/mcp/server"
 	"github.com/viant/scy/auth/authorizer"
 	"github.com/viant/scy/auth/flow"
 	"net/http"
-
-	"github.com/viant/mcp/client"
-	mcpserver "github.com/viant/mcp/server"
 
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
@@ -28,21 +27,27 @@ import (
 )
 
 type Service struct {
-	client.Interface
+	sseClient *sse.Client
 }
 
 // clientImplementer proxies MCP server requests to the client endpoint.
 type clientImplementer struct {
-	endpoint client.Interface
+	endpoint  client.Interface
+	sseClient *sse.Client
+	protocol  string
 }
 
 // Initialize proxies the initialize request to the client endpoint.
 func (ci *clientImplementer) Initialize(ctx context.Context, init *schema.InitializeRequestParams, result *schema.InitializeResult) {
+	ci.endpoint = client.New("proxy", "0.1", ci.sseClient,
+		client.WithProtocolVersion(init.ProtocolVersion),
+		client.WithCapabilities(schema.ClientCapabilities{Experimental: make(schema.ClientCapabilitiesExperimental)}))
 	res, err := ci.endpoint.Initialize(ctx)
 	if err != nil {
 		return
 	}
 	*result = *res
+
 }
 
 // ListResources proxies the resources/list request.
@@ -173,48 +178,81 @@ func (ci *clientImplementer) Implements(method string) bool {
 // New constructs a bridge Service. Provide either Config.Endpoint or Config.URL.
 func New(ctx context.Context, cfg *Options) (*Service, error) {
 
-	var transportOption []sse.Option
+	var err error
+	var sseOptions = []sse.Option{
+		//sse.WithListener(func(message *jsonrpc.Message) {
+		//.. debug messages
+		//}),
+	}
+
 	if cfg.OAuth2ConfigURL != "" {
-		auth := authorizer.New()
-		oAuthConfig := &authorizer.OAuthConfig{ConfigURL: cfg.OAuth2ConfigURL}
-		if err := auth.EnsureConfig(ctx, oAuthConfig); err != nil {
+		if sseOptions, err = getOAuthOptions(ctx, cfg); err != nil {
 			return nil, err
 		}
-		aStore := store.NewMemoryStore(store.WithClientConfig(oAuthConfig.Config))
-
-		issuer, _ := url.Base(oAuthConfig.Config.Endpoint.AuthURL, "https")
-
-		var authTransportOptions = []authtransport.Option{
-			authtransport.WithStore(aStore),
-			authtransport.WithAuthFlow(flow.NewBrowserFlow()),
+	} else if cfg.BackendForFrontend {
+		authTransportOptions := []authtransport.Option{
+			authtransport.WithBackendForFrontendAuth(),
 			authtransport.WithGlobalResource(&authorization.Authorization{
 				UseIdToken: true,
 				ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
-					AuthorizationServers: []string{issuer},
+					AuthorizationServers: []string{},
 				},
 			}),
+		}
+		if cfg.BackendForFrontendHeader != "" {
+			authTransportOptions = append(authTransportOptions, authtransport.WithAuthorizationExchangeHeader(cfg.BackendForFrontendHeader))
 		}
 		roundTripper, err := authtransport.New(authTransportOptions...)
 		if err != nil {
 			return nil, err
 		}
-		transportOption = append(transportOption, sse.WithMessageHttpClient(&http.Client{Transport: roundTripper}))
+		sseOptions = append(sseOptions, sse.WithMessageHttpClient(&http.Client{Transport: roundTripper}))
+
 	}
-	aTransport, err := sse.New(ctx, cfg.URL, transportOption...)
+
+	aTransport, err := sse.New(ctx, cfg.URL, sseOptions...)
 	if err != nil {
 		return nil, err
 	}
 
-	aClient := client.New("proxy", "0.1", aTransport,
-		client.WithCapabilities(schema.ClientCapabilities{Experimental: make(schema.ClientCapabilitiesExperimental)}))
-	return &Service{Interface: aClient}, nil
+	return &Service{sseClient: aTransport}, nil
+}
+
+func getOAuthOptions(ctx context.Context, cfg *Options) ([]sse.Option, error) {
+	if cfg.EncryptionKey != "" {
+		cfg.OAuth2ConfigURL += "|" + cfg.EncryptionKey
+	}
+	auth := authorizer.New()
+	oAuthConfig := &authorizer.OAuthConfig{ConfigURL: cfg.OAuth2ConfigURL}
+	if err := auth.EnsureConfig(ctx, oAuthConfig); err != nil {
+		return nil, err
+	}
+	aStore := store.NewMemoryStore(store.WithClientConfig(oAuthConfig.Config))
+
+	issuer, _ := url.Base(oAuthConfig.Config.Endpoint.AuthURL, "https")
+
+	var authTransportOptions = []authtransport.Option{
+		authtransport.WithStore(aStore),
+		authtransport.WithAuthFlow(flow.NewBrowserFlow()),
+		authtransport.WithGlobalResource(&authorization.Authorization{
+			UseIdToken: true,
+			ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
+				AuthorizationServers: []string{issuer},
+			},
+		}),
+	}
+	roundTripper, err := authtransport.New(authTransportOptions...)
+	if err != nil {
+		return nil, err
+	}
+	return append([]sse.Option{}, sse.WithMessageHttpClient(&http.Client{Transport: roundTripper})), nil
 }
 
 // HTTP starts an HTTP/SSE server on the given address that proxies MCP JSON-RPC calls to the client endpoint.
 func (s *Service) HTTP(ctx context.Context, addr string) (*http.Server, error) {
 	// build a newImplementer that forwards requests to the client.Interface
 	newImplementer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, _ protoClient.Operations) (protoserver.Implementer, error) {
-		impl := &clientImplementer{endpoint: s.Interface}
+		impl := &clientImplementer{sseClient: s.sseClient}
 		return impl, nil
 	}
 	// create a server with our proxy implementer
@@ -230,7 +268,7 @@ func (s *Service) HTTP(ctx context.Context, addr string) (*http.Server, error) {
 // Stdio starts a JSON-RPC server over standard input/output that proxies MCP calls to the client endpoint.
 func (s *Service) Stdio(ctx context.Context) (*stdiosrv.Server, error) {
 	newImplementer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, _ protoClient.Operations) (protoserver.Implementer, error) {
-		impl := &clientImplementer{endpoint: s.Interface}
+		impl := &clientImplementer{sseClient: s.sseClient}
 		return impl, nil
 	}
 	srv, err := mcpserver.New(

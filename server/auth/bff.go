@@ -14,28 +14,24 @@ type Verifier struct {
 	Created time.Time
 }
 
-func (s *Service) handleAuthCode(r *http.Request) (*oauth2.Token, error) {
+func (s *Service) handleAuthorizationExchange(r *http.Request) (*oauth2.Token, error) {
 	if s.Config.BackendForFrontend == nil {
 		return nil, nil
 	}
-	headerValue := r.Header.Get(s.Config.BackendForFrontend.AuthCodeHeader)
+	headerValue := r.Header.Get(s.Config.BackendForFrontend.AuthorizationExchangeHeader)
 	if headerValue != "" {
-
-		code := extractFromHeader(headerValue, "code")
-		if code == "" {
-			code = extractFromHeader(headerValue, "auth_code")
-		}
-		if code == "" {
-			code = headerValue
-		}
-		if sessionID := s.SessionIdProvider(r); sessionID != "" {
+		authorizationExchange := &flow.AuthorizationExchange{}
+		authorizationExchange.FromHeader(headerValue)
+		if sessionID := s.SessionIdProvider(r); sessionID != "" && authorizationExchange.Code != "" {
 			cfg := s.Config.BackendForFrontend
 			verifier, ok := s.codeVerifiers.Get(sessionID)
 			if !ok {
 				return nil, nil
 			}
 			s.codeVerifiers.Delete(sessionID)
-			return flow.Exchange(r.Context(), cfg.Client, headerValue, flow.WithCodeVerifier(verifier.Code), flow.WithRedirectURI(cfg.RedirectURI))
+			return flow.Exchange(r.Context(), cfg.Client, authorizationExchange.Code, flow.WithPKCE(true),
+				flow.WithCodeVerifier(verifier.Code),
+				flow.WithRedirectURI(authorizationExchange.RedirectURI))
 		}
 	}
 	return nil, nil
@@ -49,6 +45,12 @@ func (s *Service) generateAuthorizationURI(ctx context.Context, r *http.Request)
 	state := flow.GenerateCodeVerifier()
 	s.expireVerifiersIfNeeded()
 	s.codeVerifiers.Put(sessionID, &Verifier{Code: codeVerifier, Created: time.Now()})
-	authorizationURI, _ := flow.BuildAuthCodeURL(cfg.Client, flow.WithPKCE(true), flow.WithState(state), flow.WithCodeVerifier(codeVerifier), flow.WithRedirectURI(cfg.RedirectURI))
+	var flowOptions = []flow.Option{
+		flow.WithPKCE(true), flow.WithState(state), flow.WithCodeVerifier(codeVerifier),
+	}
+	if cfg.RedirectURI != "" {
+		flowOptions = append(flowOptions, flow.WithRedirectURI(cfg.RedirectURI))
+	}
+	authorizationURI, _ := flow.BuildAuthCodeURL(cfg.Client, flowOptions...)
 	return authorizationURI
 }

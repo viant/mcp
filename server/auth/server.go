@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/viant/jsonrpc"
+	"github.com/viant/jsonrpc/transport/server/http/session"
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp-protocol/syncmap"
@@ -202,8 +203,19 @@ func (s *Service) ProtectedResourcesHandler(w http.ResponseWriter, request *http
 
 func New(config *Config) (*Service, error) {
 	return &Service{Config: config,
-		codeVerifiers:     syncmap.NewMap[string, *Verifier](),
-		resourceToken:     syncmap.NewMap[string, *oauth2.Token](),
-		SessionIdProvider: func(r *http.Request) string { return "" },
+		codeVerifiers: syncmap.NewMap[string, *Verifier](),
+		resourceToken: syncmap.NewMap[string, *oauth2.Token](),
+		SessionIdProvider: func(r *http.Request) string {
+			locator := session.Locator{}
+			sessionLocation := session.NewQueryLocation("session_id")
+			streamingSessionLocation := session.NewQueryLocation("Mcp-Session-Id")
+			if ret, _ := locator.Locate(sessionLocation, r); ret != "" {
+				return ret
+			}
+			if ret, _ := locator.Locate(streamingSessionLocation, r); ret != "" {
+				return ret
+			}
+			return ""
+		},
 	}, nil
 }

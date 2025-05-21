@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/viant/scy/auth/flow"
 	"net/http"
 	"strconv"
 	"strings"
@@ -75,7 +76,7 @@ func (c *Cors) setHeaders(writer http.ResponseWriter, request *http.Request) {
 	if len(c.AllowHeaders) > 0 {
 		allowedHeaders := strings.Join(c.AllowHeaders, Separator)
 		if allowedHeaders == "*" {
-			allowedHeaders = "Content-Type,Authorization,X-MCP-Authorization"
+			allowedHeaders = "Content-Type,Authorization," + flow.AuthorizationExchangeHeader
 		}
 		writer.Header().Set(AllowHeadersHeader, allowedHeaders)
 	}
@@ -88,7 +89,7 @@ func (c *Cors) setHeaders(writer http.ResponseWriter, request *http.Request) {
 	if len(c.ExposeHeaders) > 0 {
 		exposedHeaders := strings.Join(c.ExposeHeaders, Separator)
 		if exposedHeaders == "*" {
-			exposedHeaders = "Content-Type,Authorization"
+			exposedHeaders = "Content-Type,Authorization," + flow.AuthorizationExchangeHeader
 		}
 		writer.Header().Set(ExposeHeadersHeader, exposedHeaders)
 	}

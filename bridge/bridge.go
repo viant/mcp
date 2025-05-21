@@ -11,5 +11,4 @@ func main() {
 	if err := mcp.Run(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
-
 }

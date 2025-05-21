@@ -28,3 +28,9 @@ func WithImplementer(impl client.Implementer) Option {
 		c.implementer = impl
 	}
 }
+
+func WithProtocolVersion(version string) Option {
+	return func(c *Client) {
+		c.protocolVersion = version
+	}
+}

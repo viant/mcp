@@ -14,7 +14,7 @@ func (h *Handler) Initialize(ctx context.Context, request *jsonrpc.Request) (*sc
 	if err := json.Unmarshal(request.Params, &initRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse %v", err), request.Params)
 	}
-	protoVersion := h.protocolVersion
+	protoVersion := initRequest.Params.ProtocolVersion
 	h.clientInitialize = &initRequest.Params
 	result := schema.InitializeResult{
 		ProtocolVersion: protoVersion,

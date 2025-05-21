@@ -18,25 +18,13 @@ type RoundTripper struct {
 	Global          *authorization.Authorization
 	store           store.Store
 	scopper         Scopper
+	useBFF          bool
+	bffHeader       string
 	authFlow        flow.AuthFlow
+	bffFlow         flow.BackendForFrontendFlow
 	authFlowOptions []flow.Option
 	transport       http.RoundTripper
 	mux             sync.Mutex
-}
-
-func New(options ...Option) (*RoundTripper, error) {
-	ret := &RoundTripper{
-		transport: http.DefaultTransport,
-		store:     store.NewMemoryStore(),
-		authFlow:  &flow.BrowserFlow{},
-		scopper:   &nopScopper{},
-	}
-
-	for _, opt := range options {
-		opt(ret)
-	}
-
-	return ret, nil
 }
 
 func (r *RoundTripper) Store() store.Store {
@@ -59,6 +47,19 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp.Body.Close()
 
 	ctx := req.Context()
+	if r.useBFF {
+		if authorizationURI, _ := parseAuthorizationURI(resp); authorizationURI != "" {
+			exchange, err := r.bffFlow.BeginAuthorization(req.Context(), authorizationURI)
+			if err != nil {
+				return nil, err
+			}
+			// 4) Replay the request with the Bearer header.
+			retry := clone(req)
+			retry.Header.Set(r.bffHeader, exchange.ToHeader())
+			return r.transport.RoundTrip(retry)
+		}
+	}
+
 	tok, err := r.Token(ctx, resp)
 	if err != nil {
 		return nil, err
@@ -164,4 +165,21 @@ func (r *RoundTripper) loadProtectedResourceMetadata(ctx context.Context, resp *
 		return nil, err
 	}
 	return meta.FetchProtectedResourceMetadata(ctx, protectedResourceMetadataURL, &http.Client{Transport: r.transport})
+}
+
+func New(options ...Option) (*RoundTripper, error) {
+	ret := &RoundTripper{
+		transport: http.DefaultTransport,
+		store:     store.NewMemoryStore(),
+		authFlow:  &flow.BrowserFlow{},
+		bffFlow:   &flow.BackendForFrontend{},
+		scopper:   &nopScopper{},
+		bffHeader: flow.AuthorizationExchangeHeader,
+	}
+
+	for _, opt := range options {
+		opt(ret)
+	}
+
+	return ret, nil
 }
