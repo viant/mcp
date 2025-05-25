@@ -65,3 +65,30 @@ func WithLoggerName(name string) Option {
 		return nil
 	}
 }
+
+// WithEndpointAddress sets the protocol version.
+func WithEndpointAddress(addr string) Option {
+	return func(s *Server) error {
+		s.httpServer.addr = addr
+		return nil
+	}
+}
+
+// WithCustomHandler adds a custom handler to the server.
+func WithCustomHandler(path string, handler http.HandlerFunc) Option {
+	return func(s *Server) error {
+		if s.customHandlers == nil {
+			s.customHandlers = make(map[string]http.HandlerFunc)
+		}
+		s.customHandlers[path] = handler
+		return nil
+	}
+}
+
+// WithProtocolVersion sets the protocol version for the server.
+func WithProtocolVersion(version string) Option {
+	return func(s *Server) error {
+		s.protocolVersion = version
+		return nil
+	}
+}

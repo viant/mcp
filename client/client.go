@@ -11,6 +11,8 @@ import (
 	"github.com/viant/mcp/client/auth"
 )
 
+var errUninitialized = fmt.Errorf("client is not initialized")
+
 type Client struct {
 	capabilities    schema.ClientCapabilities
 	info            schema.Implementation

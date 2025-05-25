@@ -25,7 +25,7 @@ type Server struct {
 	authorizer                func(next http.Handler) http.Handler
 	jRPCAuthorizer            auth.JRPCAuthorizer
 	stdioServer
-	sseServer
+	httpServer
 }
 
 func (s *Server) cancelOperation(id int) {
@@ -79,6 +79,7 @@ func New(options ...Option) (*Server, error) {
 			return nil, err
 		}
 	}
+
 	if s.newImplementer == nil {
 		return nil, errors.New("no implementer specified")
 	}

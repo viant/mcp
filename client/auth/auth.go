@@ -80,3 +80,9 @@ func injectToken(request *jsonrpc.Request, token *oauth2.Token) (*jsonrpc.Reques
 	}
 	return &next, nil
 }
+
+func NewAuthorizer(transport *transport.RoundTripper) *Authorizer {
+	return &Authorizer{
+		Transport: transport,
+	}
+}

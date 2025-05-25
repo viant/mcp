@@ -34,7 +34,9 @@ Follow the standard OAuth 2.1 Authorization Code Flow with PKCE. The server trea
 
 ## Securing the MCP Server
 
-Use `server.WithAuthPolicy` when creating your MCP server to enable OAuth2 protection.
+Create an `auth.Service` from a policy and wire it into the server using
+`server.WithProtectedResourcesHandler`, `server.WithAuthorizer`, and
+`server.WithJRPCAuthorizer` to enable OAuth2 protection.
 
 
 #### OAuth2 RoundTripper Options
@@ -128,7 +130,8 @@ The experimental fine-grained mode lets you protect individual tools or resource
 
 ### Server Side
 
-Use `server.WithAuthorizationPolicy` and the `Tools` map in `authorization.Authorization` to specify per-tool metadata:
+Build an `auth.Service` from the policy and wire its handlers into the server with
+`server.WithProtectedResourcesHandler`, `server.WithAuthorizer`, and `server.WithJRPCAuthorizer`:
 ```go
 import (
     "context"
@@ -157,7 +160,16 @@ func main() {
         Tools:      toolAuth,
     }
     srv, err := server.New(
-        server.WithAuthorizationPolicy(authCfg),
+        // Build auth service from the policy
+        func() (opts []server.Option) {
+            authSrv, _ := auth.New(&auth.Config{Policy: authCfg})
+            opts = append(opts,
+                server.WithProtectedResourcesHandler(authSrv.ProtectedResourcesHandler),
+                server.WithAuthorizer(authSrv.Middleware),
+                server.WithJRPCAuthorizer(authSrv.EnsureAuthorized),
+            )
+            return
+        }()..., // expand the slice into options
         // Other server options...
     )
     if err != nil {
@@ -181,7 +193,7 @@ import (
 )
 
 // Create the strict AuthServer
-strictAuth, _ := auth.NewAuthServer(&authorization.Policy{
+strictAuth, _ := auth.New(&auth.Config{Policy: &authorization.Policy{
     Global: &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
         Resource: "https://myapp.example.com",
         AuthorizationServers: []string{"https://auth.example.com/"},
@@ -200,7 +212,10 @@ fallbackAuth := auth.NewFallbackAuth(strictAuth, rt, rt)
 
 // Use the fallback authorizer in your server
 srv, _ := server.New(
-    server.WithAuthorizationPolicy(config),        // initializes strictAuth
+    // initialize strictAuth
+    server.WithProtectedResourcesHandler(strictAuth.ProtectedResourcesHandler),
+    server.WithAuthorizer(strictAuth.Middleware),
+    server.WithJRPCAuthorizer(strictAuth.EnsureAuthorized),
     server.WithAuthorizer(fallbackAuth.EnsureAuthorized),
     // other options...
 )
