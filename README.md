@@ -56,6 +56,8 @@ graph LR
 
 ```bash
 go get github.com/viant/mcp
+
+If you just need to connect **existing tools** to a remote MCP server you might prefer to use the standalone **Bridge** binary instead of embedding the Go package.  See [Bridge Guide](docs/bridge.md) for details.
 ```
 
 ### Creating a Server
@@ -123,6 +125,7 @@ func main() {
 
 - **Implementer Guide**: [docs/implementer.md](docs/implementer.md)
 - **Authentication Guide**: [docs/authentication.md](docs/authentication.md)
+- **Bridge (local proxy) Guide**: [docs/bridge.md](docs/bridge.md)
  
 ## Authentication & Authorization Summary
 
