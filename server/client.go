@@ -8,28 +8,56 @@ import (
 	"github.com/viant/mcp-protocol/schema"
 )
 
+// Client implements mcp-protocol/client.Operations for the server side. It allows
+// server implementers to invoke client-side RPC methods over the same transport
+// channel on which the original request arrived.
 type Client struct{ transport.Transport }
 
 func (c *Client) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, *jsonrpc.Error) {
 	return send[schema.ListRootsRequestParams, schema.ListRootsResult](ctx, c, schema.MethodRootsList, params)
 }
 
-// CreateMessage creates sampling message
+// CreateMessage creates a sampling message on the client side.
 func (c *Client) CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams) (*schema.CreateMessageResult, *jsonrpc.Error) {
-	return send[schema.CreateMessageRequestParams, schema.CreateMessageResult](ctx, c, schema.MethodRootsList, params)
+	return send[schema.CreateMessageRequestParams, schema.CreateMessageResult](ctx, c, schema.MethodSamplingCreateMessage, params)
 }
 
+// Experimental/Proposed method names that are not yet part of the stable schema
+// package.
+const (
+	methodElicit            = "elicitation/create"
+	methodInteractionCreate = "interaction/create"
+)
+
+// Elicit asks the client to elicit additional information from the user.
+func (c *Client) Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, *jsonrpc.Error) {
+	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, methodElicit, params)
+}
+
+// CreateUserInteraction requests that the client presents an interaction UI to
+// the user and returns their response.
+func (c *Client) CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, *jsonrpc.Error) {
+	return send[schema.CreateUserInteractionRequestParams, schema.CreateUserInteractionResult](ctx, c, methodInteractionCreate, params)
+}
+
+// send marshals parameters, sends the request and unmarshals the result.
 func send[P any, R any](ctx context.Context, client *Client, method string, parameters *P) (*R, *jsonrpc.Error) {
 	clientTransport := client.Transport
+
 	req, err := jsonrpc.NewRequest(method, parameters)
 	if err != nil {
 		return nil, jsonrpc.NewInvalidRequest(err.Error(), nil)
 	}
+
 	response, err := clientTransport.Send(ctx, req)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), req.Params)
 	}
+
 	var result R
-	err = json.Unmarshal(response.Result, &result)
+	if unmarshalErr := json.Unmarshal(response.Result, &result); unmarshalErr != nil {
+		return nil, jsonrpc.NewInternalError(unmarshalErr.Error(), nil)
+	}
+
 	return &result, response.Error
 }

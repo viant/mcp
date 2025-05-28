@@ -27,6 +27,12 @@ func (h *Handler) Serve(ctx context.Context, request *jsonrpc.Request, response 
 	case schema.MethodSamplingCreateMessage:
 		createResponse, err := h.CreateMessageRequest(ctx, request)
 		h.setResponse(response, createResponse, err)
+	case schema.MethodElicitationCreate:
+		elicitResponse, err := h.Elicit(ctx, request)
+		h.setResponse(response, elicitResponse, err)
+	case schema.MethodInteractionCreate:
+		uiResponse, err := h.CreateUserInteractionRequest(ctx, request)
+		h.setResponse(response, uiResponse, err)
 	default:
 		response.Error = jsonrpc.NewMethodNotFound(fmt.Sprintf("method %s not found", request.Method), nil)
 	}

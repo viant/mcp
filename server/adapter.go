@@ -13,6 +13,85 @@ type Adapter struct {
 	handler *Handler
 }
 
+// ---- New client operations ----
+
+// ListRoots proxies "roots/list" to the underlying handler.
+func (a *Adapter) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, error) {
+	req, err := jsonrpc.NewRequest(schema.MethodRootsList, params)
+	if err != nil {
+		return nil, err
+	}
+	response := &jsonrpc.Response{}
+	a.handler.Serve(ctx, req, response)
+	if response.Error != nil {
+		return nil, response.Error
+	}
+	var result schema.ListRootsResult
+	if err = json.Unmarshal(response.Result, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// CreateMessage proxies "sampling/createMessage" to the underlying handler.
+func (a *Adapter) CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams) (*schema.CreateMessageResult, error) {
+	req, err := jsonrpc.NewRequest(schema.MethodSamplingCreateMessage, params)
+	if err != nil {
+		return nil, err
+	}
+	response := &jsonrpc.Response{}
+	a.handler.Serve(ctx, req, response)
+	if response.Error != nil {
+		return nil, response.Error
+	}
+	var result schema.CreateMessageResult
+	if err = json.Unmarshal(response.Result, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+const (
+	adapterMethodElicit            = "elicitation/create"
+	adapterMethodInteractionCreate = "interaction/create"
+)
+
+// Elicit proxies "elicitation/create" to the underlying handler.
+func (a *Adapter) Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, error) {
+	req, err := jsonrpc.NewRequest(adapterMethodElicit, params)
+	if err != nil {
+		return nil, err
+	}
+	response := &jsonrpc.Response{}
+	a.handler.Serve(ctx, req, response)
+	if response.Error != nil {
+		return nil, response.Error
+	}
+	var result schema.ElicitResult
+	if err = json.Unmarshal(response.Result, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// CreateUserInteraction proxies "interaction/create" to the underlying handler.
+func (a *Adapter) CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, error) {
+	req, err := jsonrpc.NewRequest(adapterMethodInteractionCreate, params)
+	if err != nil {
+		return nil, err
+	}
+	response := &jsonrpc.Response{}
+	a.handler.Serve(ctx, req, response)
+	if response.Error != nil {
+		return nil, response.Error
+	}
+	var result schema.CreateUserInteractionResult
+	if err = json.Unmarshal(response.Result, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Initialize initializes the client
 func (a *Adapter) Initialize(ctx context.Context) (*schema.InitializeResult, error) {
 	params := &schema.InitializeRequestParams{}

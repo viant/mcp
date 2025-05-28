@@ -114,6 +114,31 @@ func (c *Client) SetLevel(ctx context.Context, params *schema.SetLevelRequestPar
 	return send[schema.SetLevelRequestParams, schema.SetLevelResult](ctx, c, schema.MethodLoggingSetLevel, params)
 }
 
+// ----- New client operations (client side RPC methods) -----
+
+func (c *Client) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, error) {
+	return send[schema.ListRootsRequestParams, schema.ListRootsResult](ctx, c, schema.MethodRootsList, params)
+}
+
+func (c *Client) CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams) (*schema.CreateMessageResult, error) {
+	return send[schema.CreateMessageRequestParams, schema.CreateMessageResult](ctx, c, schema.MethodSamplingCreateMessage, params)
+}
+
+// Method name constants for experimental features which are not yet defined in mcp-protocol/schema.
+// They are declared here to avoid compile-time dependency mismatch and will be removed once promoted upstream.
+const (
+	methodElicit            = "elicitation/create"
+	methodInteractionCreate = "interaction/create"
+)
+
+func (c *Client) Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, error) {
+	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, methodElicit, params)
+}
+
+func (c *Client) CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, error) {
+	return send[schema.CreateUserInteractionRequestParams, schema.CreateUserInteractionResult](ctx, c, methodInteractionCreate, params)
+}
+
 func New(name, version string, transport transport.Transport, options ...Option) *Client {
 	ret := &Client{
 		info:      *schema.NewImplementation(name, version),

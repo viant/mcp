@@ -45,6 +45,20 @@ type Interface interface {
 
 	// SetLevel sets the logging level
 	SetLevel(ctx context.Context, params *schema.SetLevelRequestParams) (*schema.SetLevelResult, error)
+
+	// ----- New operations defined in mcp-protocol/client/operations.go -----
+
+	// ListRoots lists client roots (client side capability discovery)
+	ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, error)
+
+	// CreateMessage creates a sampling message on the client side
+	CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams) (*schema.CreateMessageResult, error)
+
+	// Elicit is a server-initiated request asking the client to elicit additional information from the end-user
+	Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, error)
+
+	// CreateUserInteraction asks the client to display a UI interaction to the user and return their response
+	CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, error)
 }
 
 // Ensure Client implements Interface
