@@ -13,5 +13,5 @@ func (h *Handler) Complete(ctx context.Context, request *jsonrpc.Request) (*sche
 	if err := json.Unmarshal(request.Params, &completeRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
 	}
-	return h.implementer.Complete(ctx, completeRequest)
+	return h.server.Complete(ctx, completeRequest)
 }

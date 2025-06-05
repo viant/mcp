@@ -14,5 +14,5 @@ func (h *Handler) ListRoots(ctx context.Context, request *jsonrpc.Request) (*sch
 	if err := json.Unmarshal(request.Params, &listRootRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.implementer.ListRoots(ctx, listRootRequest.Params)
+	return h.client.ListRoots(ctx, listRootRequest.Params)
 }

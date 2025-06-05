@@ -11,7 +11,10 @@ import (
 // Client implements mcp-protocol/client.Operations for the server side. It allows
 // server implementers to invoke client-side RPC methods over the same transport
 // channel on which the original request arrived.
-type Client struct{ transport.Transport }
+type Client struct {
+	implements map[string]bool
+	transport.Transport
+}
 
 func (c *Client) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, *jsonrpc.Error) {
 	return send[schema.ListRootsRequestParams, schema.ListRootsResult](ctx, c, schema.MethodRootsList, params)
@@ -20,6 +23,26 @@ func (c *Client) ListRoots(ctx context.Context, params *schema.ListRootsRequestP
 // CreateMessage creates a sampling message on the client side.
 func (c *Client) CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams) (*schema.CreateMessageResult, *jsonrpc.Error) {
 	return send[schema.CreateMessageRequestParams, schema.CreateMessageResult](ctx, c, schema.MethodSamplingCreateMessage, params)
+}
+
+func (c *Client) Init(ctx context.Context, capabilities *schema.ClientCapabilities) {
+	if capabilities.Elicitation != nil {
+		c.implements[schema.MethodElicitationCreate] = true
+	}
+	if capabilities.Roots != nil {
+		c.implements[schema.MethodRootsList] = true
+	}
+	if capabilities.UserInteraction != nil {
+		c.implements[schema.MethodInteractionCreate] = true
+	}
+	if capabilities.Sampling != nil {
+		c.implements[schema.MethodSamplingCreateMessage] = true
+	}
+
+}
+
+func (c *Client) Implements(method string) bool {
+	return c.implements[method]
 }
 
 // Experimental/Proposed method names that are not yet part of the stable schema
@@ -60,4 +83,12 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 	}
 
 	return &result, response.Error
+}
+
+// NewClient create a client
+func NewClient(implements map[string]bool, transport transport.Transport) *Client {
+	if implements == nil {
+		implements = make(map[string]bool)
+	}
+	return &Client{implements: implements, Transport: transport}
 }

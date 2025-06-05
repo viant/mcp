@@ -20,8 +20,8 @@ import (
 )
 
 type (
-	Implementer struct {
-		*protoserver.DefaultImplementer
+	Server struct {
+		*protoserver.DefaultServer
 		config    *Config
 		fs        afs.Service
 		snapshot  *syncmap.Map[string, storage.Object]
@@ -35,7 +35,7 @@ type (
 	}
 )
 
-func (i *Implementer) watchLoop(ctx context.Context) {
+func (i *Server) watchLoop(ctx context.Context) {
 	tick := time.NewTicker(2 * time.Second) // make interval configurable
 	defer tick.Stop()
 
@@ -52,7 +52,7 @@ func (i *Implementer) watchLoop(ctx context.Context) {
 }
 
 // Subscribe adds the URI to the subscription map.
-func (i *Implementer) Subscribe(ctx context.Context, request *schema.SubscribeRequest) (*schema.SubscribeResult, *jsonrpc.Error) {
+func (i *Server) Subscribe(ctx context.Context, request *schema.SubscribeRequest) (*schema.SubscribeResult, *jsonrpc.Error) {
 	i.Subscription.Put(request.Params.Uri, true)
 	object, err := i.fs.Object(ctx, request.Params.Uri)
 	if err != nil {
@@ -76,7 +76,7 @@ func (i *Implementer) Subscribe(ctx context.Context, request *schema.SubscribeRe
 	return &schema.SubscribeResult{}, nil
 }
 
-func (i *Implementer) ListResources(ctx context.Context, request *schema.ListResourcesRequest) (*schema.ListResourcesResult, *jsonrpc.Error) {
+func (i *Server) ListResources(ctx context.Context, request *schema.ListResourcesRequest) (*schema.ListResourcesResult, *jsonrpc.Error) {
 	objects, err := i.fs.List(ctx, i.config.BaseURL, i.config.Options...)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
@@ -102,7 +102,7 @@ func (i *Implementer) ListResources(ctx context.Context, request *schema.ListRes
 	return &schema.ListResourcesResult{Resources: resources}, nil
 }
 
-func (i *Implementer) ReadResource(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
+func (i *Server) ReadResource(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
 	object, err := i.fs.Object(ctx, request.Params.Uri)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
@@ -136,15 +136,15 @@ func (i *Implementer) ReadResource(ctx context.Context, request *schema.ReadReso
 }
 
 // Implements returns true if the method is supported by this implementer
-func (i *Implementer) Implements(method string) bool {
+func (i *Server) Implements(method string) bool {
 	switch method {
 	case schema.MethodResourcesList, schema.MethodResourcesRead, schema.MethodSubscribe, schema.MethodUnsubscribe:
 		return true
 	}
-	return i.DefaultImplementer.Implements(method)
+	return i.DefaultServer.Implements(method)
 }
 
-func (i *Implementer) pollChanges(ctx context.Context) error {
+func (i *Server) pollChanges(ctx context.Context) error {
 	for _, object := range i.snapshot.Values() {
 		if object.IsDir() {
 			continue
@@ -163,7 +163,7 @@ func (i *Implementer) pollChanges(ctx context.Context) error {
 	return nil
 }
 
-func (i *Implementer) notifyResourceUpdated(ctx context.Context, uri string) error {
+func (i *Server) notifyResourceUpdated(ctx context.Context, uri string) error {
 	notification, err := jsonrpc.NewNotification(schema.MethodNotificationResourceUpdated, map[string]string{"uri": uri})
 	if err != nil {
 		return fmt.Errorf("failed to create notification: %w", err)
@@ -171,7 +171,7 @@ func (i *Implementer) notifyResourceUpdated(ctx context.Context, uri string) err
 	return i.Notifier.Notify(ctx, notification)
 }
 
-func (i *Implementer) ensureWatcher() {
+func (i *Server) ensureWatcher() {
 	i.mutex.Lock()
 	defer i.mutex.Unlock()
 	if i.stopWatch != nil { // already running
@@ -197,15 +197,15 @@ func isBinary(data []byte) bool {
 	return ratio > 0.3
 }
 
-// New creates a new Implementer instance
-func New(config *Config) protoserver.NewImplementer {
-	return func(_ context.Context, notifier transport.Notifier, logger logger.Logger, client protoclient.Operations) (protoserver.Implementer, error) {
-		base := protoserver.NewDefaultImplementer(notifier, logger, client)
-		ret := &Implementer{
-			fs:                 afs.New(),
-			config:             config,
-			DefaultImplementer: base,
-			snapshot:           syncmap.NewMap[string, storage.Object](),
+// New creates a new Server instance
+func New(config *Config) protoserver.NewServer {
+	return func(_ context.Context, notifier transport.Notifier, logger logger.Logger, client protoclient.Operations) (protoserver.Server, error) {
+		base := protoserver.NewDefaultServer(notifier, logger, client)
+		ret := &Server{
+			fs:            afs.New(),
+			config:        config,
+			DefaultServer: base,
+			snapshot:      syncmap.NewMap[string, storage.Object](),
 		}
 		ret.ensureWatcher()
 		return ret, nil

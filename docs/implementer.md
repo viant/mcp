@@ -5,9 +5,9 @@ MCP implementers provide the application-specific functionality for the MCP prot
 
 ## Implementer Interface
 
-An implementer is registered via the `server.NewImplementer` factory:
+An implementer is registered via the `server.NewServer` factory:
 ```go
-type NewImplementer func(
+type NewServer func(
     ctx context.Context,
     notifier transport.Notifier,
     logger logger.Logger,
@@ -62,7 +62,7 @@ func (i *MyImplementer) Implements(method string) bool {
 }
 
 // New returns a factory for MyImplementer.
-func New() server.NewImplementer {
+func New() server.NewServer {
 	return func(
 		ctx context.Context,
 		notifier transport.Notifier,
@@ -100,9 +100,9 @@ func main() {
         BaseURL: "embed://data",
         Options: []storage.Option{embedFS},
     }
-    newImplementer := custom.New(config)
+    NewServer := custom.New(config)
     srv, err := server.New(
-        server.WithNewImplementer(newImplementer),
+        server.WithNewServer(NewServer),
         server.WithImplementation(schema.Implementation{"custom", "1.0"}),
     )
     if err != nil {

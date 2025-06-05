@@ -16,7 +16,7 @@ import (
 type Server struct {
 	activeContexts            *syncmap.Map[int, *activeContext]
 	info                      schema.Implementation
-	newImplementer            server.NewImplementer
+	newServer                 server.NewServer
 	instructions              *string
 	protocolVersion           string
 	loggerName                string
@@ -43,13 +43,15 @@ func (s *Server) NewHandler(ctx context.Context, transport transport.Transport) 
 
 func (s *Server) newHandler(ctx context.Context, transport transport.Transport) *Handler {
 	ret := &Handler{
-		Server:     s,
-		Notifier:   transport,
-		authorizer: s.jRPCAuthorizer,
+		Server:         s,
+		Notifier:       transport,
+		authorizer:     s.jRPCAuthorizer,
+		clientFeatures: make(map[string]bool),
 	}
 	ret.Logger = NewLogger(ret.loggerName, &ret.loggingLevel, ret.Notifier)
-	aClient := &Client{Transport: transport}
-	ret.implementer, ret.err = s.newImplementer(ctx, transport, ret.Logger, aClient)
+
+	aClient := NewClient(ret.clientFeatures, transport)
+	ret.server, ret.err = s.newServer(ctx, transport, ret.Logger, aClient)
 	return ret
 }
 
@@ -80,8 +82,8 @@ func New(options ...Option) (*Server, error) {
 		}
 	}
 
-	if s.newImplementer == nil {
-		return nil, errors.New("no implementer specified")
+	if s.newServer == nil {
+		return nil, errors.New("no server specified")
 	}
 	return s, nil
 }

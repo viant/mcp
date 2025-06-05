@@ -89,7 +89,7 @@ func main() {
     B int `json:"b"`
   }
   
-  newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) error {
+  NewServer := serverproto.WithDefaultServer(context.Background(), func(implementer *serverproto.Server) error {
     // Register a simple resource
     implementer.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
       func(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
@@ -107,7 +107,7 @@ func main() {
   })
 
   srv, err := server.New(
-    server.WithNewImplementer(newImplementer),
+    server.WithNewServer(NewServer),
     server.WithImplementation(schema.Implementation{"default", "1.0"}),
   )
   if err != nil {

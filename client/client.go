@@ -20,7 +20,7 @@ type Client struct {
 	protocolVersion string
 	transport       transport.Transport // server version
 	initialized     bool
-	implementer     client.Implementer
+	client          client.Operations
 	authInterceptor *auth.Authorizer
 }
 

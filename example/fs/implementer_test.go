@@ -43,15 +43,15 @@ func startServer() error {
 
 	resources := resource.NewFileSystem(config)
 
-	newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) error {
+	NewServer := serverproto.WithDefaultServer(context.Background(), func(server *serverproto.DefaultServer) error {
 		assets, _ := resources.Resources(context.Background())
 		for _, asset := range assets {
-			implementer.RegisterResource(asset.Metadata, asset.Handler)
+			server.RegisterResource(asset.Metadata, asset.Handler)
 		}
 		return nil
 	})
 	srv, err := server.New(
-		server.WithNewImplementer(newImplementer),
+		server.WithNewServer(NewServer),
 		server.WithImplementation(schema.Implementation{"FS", "0.1"}),
 	)
 

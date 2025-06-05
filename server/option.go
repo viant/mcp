@@ -50,10 +50,10 @@ func WithImplementation(implementation schema.Implementation) Option {
 	}
 }
 
-// WithNewImplementer sets the new implementer.
-func WithNewImplementer(newImplementer server.NewImplementer) Option {
+// WithNewServer sets the new server.
+func WithNewServer(NewServer server.NewServer) Option {
 	return func(s *Server) error {
-		s.newImplementer = newImplementer
+		s.newServer = NewServer
 		return nil
 	}
 }

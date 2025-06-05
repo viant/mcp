@@ -10,17 +10,16 @@ import (
 )
 
 func TestServerAsClient(t *testing.T) {
-	// Create a server with a default implementer
-	newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) error {
+	// Create a server with a default server
+	NewServer := serverproto.WithDefaultServer(context.Background(), func(server *serverproto.DefaultServer) error {
 		// Register a simple resource
-		implementer.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"}, nil)
+		server.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"}, nil)
 		return nil
 	})
 
 	srv, err := New(
-		WithNewImplementer(newImplementer),
+		WithNewServer(NewServer),
 		WithImplementation(schema.Implementation{"TestServer", "1.0"}),
-		WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
 	)
 	assert.NoError(t, err)
 	assert.NotNil(t, srv)

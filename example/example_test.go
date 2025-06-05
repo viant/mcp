@@ -12,9 +12,9 @@ import (
 
 func Usage_Example() {
 
-	newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) error {
+	NewServer := serverproto.WithDefaultServer(context.Background(), func(server *serverproto.DefaultServer) error {
 		// Register a simple resource
-		implementer.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
+		server.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
 			func(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
 				return &schema.ReadResourceResult{Contents: []schema.ReadResourceResultContentsElem{{Text: "Hello, world!"}}}, nil
 			})
@@ -24,7 +24,7 @@ func Usage_Example() {
 			B int `json:"b"`
 		}
 		// Register a simple calculator tool: adds two integers
-		if err := serverproto.RegisterTool[*Addition](implementer, "add", "Add two integers", func(ctx context.Context, input *Addition) (*schema.CallToolResult, *jsonrpc.Error) {
+		if err := serverproto.RegisterTool[*Addition](server.Registry, "add", "Add two integers", func(ctx context.Context, input *Addition) (*schema.CallToolResult, *jsonrpc.Error) {
 			sum := input.A + input.B
 			return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{{Text: fmt.Sprintf("%d", sum)}}}, nil
 		}); err != nil {
@@ -34,7 +34,7 @@ func Usage_Example() {
 	})
 
 	srv, err := server.New(
-		server.WithNewImplementer(newImplementer),
+		server.WithNewServer(NewServer),
 		server.WithImplementation(schema.Implementation{"default", "1.0"}),
 	)
 	if err != nil {
