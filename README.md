@@ -29,20 +29,20 @@ Key features:
 
 ## Architecture
 
-For detailed guides on custom implementers and authentication, see [docs/implementer.md](docs/implementer.md) and [docs/authentication.md](docs/authentication.md).
+For detailed guides on custom server implementations and authentication, see [docs/implementer.md](docs/implementer.md) and [docs/authentication.md](docs/authentication.md).
 
 MCP is built around the following components:
 
-2. **Server**: Handles incoming requests and dispatches to implementer
+2. **Server**: Handles incoming requests and dispatches to the protocol implementation
 3. **Client**: Makes requests to MCP-compatible servers
-4. **Implementer**: Provides the actual functionality behind each protocol method
+4. **Protocol Implementation (server.Server)**: Provides the actual functionality behind each protocol method
 
 ### High-Level Architecture
 
 ```mermaid
 graph LR
     Client[MCP Client] -->|JSON-RPC / HTTP/SSE| Server[MCP Server]
-    Server -->|Dispatches to| Implementer[MCP Implementer]
+    Server -->|Dispatches to| Implementation[MCP Server]
     subgraph Auth[Authentication / Authorization]
       OAuth2[OAuth2 / OIDC]
     end
@@ -62,11 +62,11 @@ If you just need to connect **existing tools** to a remote MCP server you might 
 
 ### Creating a Server
 
-#### Quick Start: Default Implementer
+#### Quick Start: Default Server
 
-[Default implementer](github.com/viant/mcp-protocol/server/default) can be used to quickly set up an MCP server.
-This implementer provides no-op stubs for all methods, allowing you to focus on implementing only the methods you need.
-Register handlers inline without writing a custom implementer type:
+[DefaultServer](github.com/viant/mcp-protocol/server/default) can be used to quickly set up an MCP server.
+It provides no-op stubs for all methods, allowing you to focus on implementing only the methods you need.
+Register handlers inline without writing a custom server type:
 
 ```go
 package main
@@ -89,15 +89,15 @@ func main() {
     B int `json:"b"`
   }
   
-  NewServer := serverproto.WithDefaultServer(context.Background(), func(implementer *serverproto.Server) error {
+  NewServer := serverproto.WithDefaultServer(context.Background(), func(srv *serverproto.Server) error {
     // Register a simple resource
-    implementer.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
+    srv.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
       func(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
         return &schema.ReadResourceResult{Contents: []schema.ReadResourceResultContentsElem{{Text: "Hello, world!"}}}, nil
       })
 
     // Register a simple calculator tool: adds two integers
-    if err := serverproto.RegisterTool[*Addition](implementer, "add", "Add two integers", func(ctx context.Context, input *Addition) (*schema.CallToolResult, *jsonrpc.Error) {
+    if err := serverproto.RegisterTool[*Addition](srv, "add", "Add two integers", func(ctx context.Context, input *Addition) (*schema.CallToolResult, *jsonrpc.Error) {
       sum := input.A + input.B
       return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{{Text: fmt.Sprintf("%d", sum)}}}, nil
     }); err != nil {
@@ -106,7 +106,7 @@ func main() {
 	return nil
   })
 
-  srv, err := server.New(
+  serverInstance, err := server.New(
     server.WithNewServer(NewServer),
     server.WithImplementation(schema.Implementation{"default", "1.0"}),
   )
@@ -114,7 +114,7 @@ func main() {
     log.Fatalf("Failed to create server: %v", err)
   }
 
-  log.Fatal(srv.HTTP(context.Background(), ":4981").ListenAndServe())
+  log.Fatal(serverInstance.HTTP(context.Background(), ":4981").ListenAndServe())
 }
 ```
 
@@ -123,7 +123,7 @@ func main() {
 
 ### Further Reading
 
-- **Implementer Guide**: [docs/implementer.md](docs/implementer.md)
+- **Server Implementation Guide**: [docs/implementer.md](docs/implementer.md)
 - **Authentication Guide**: [docs/authentication.md](docs/authentication.md)
 - **Bridge (local proxy) Guide**: [docs/bridge.md](docs/bridge.md)
  

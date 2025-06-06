@@ -1,9 +1,9 @@
 <!-- Automatically generated. Guided implementation documentation for MCP implementers. -->
 # Implementer Guide
 
-MCP implementers provide the application-specific functionality for the MCP protocol. Implementers must satisfy the `server.Implementer` interface, handling protocol methods such as resource listing, reading, tool invocation, and more.
+MCP implementers provide the application-specific functionality for the MCP protocol. Implementers must satisfy the `server.Server` interface, handling protocol methods such as resource listing, reading, tool invocation, and more.
 
-## Implementer Interface
+## Server Interface
 
 An implementer is registered via the `server.NewServer` factory:
 ```go
@@ -12,10 +12,10 @@ type NewServer func(
     notifier transport.Notifier,
     logger logger.Logger,
     client client.Operations,
-) server.Implementer
+) server.Server
 ```
 
-Your implementer should embed `server.DefaultImplementer` to leverage common functionality and implement the methods corresponding to the MCP schema you need. Key methods include:
+Your implementer should embed `server.DefaultServer` to leverage common functionality and implement the methods corresponding to the MCP schema you need. Key methods include:
 - `ListResources` (`resources/list`)
 - `ReadResource` (`resources/read`)
 - `ListTools` (`tools/list`)
@@ -36,15 +36,15 @@ import (
 "github.com/viant/mcp-protocol/server"
 )
 
-// MyImplementer implements the MCP protocol methods.
-// Embed DefaultImplementer for common behavior.
-type MyImplementer struct {
-	*server.DefaultImplementer
+// MyServer implements the MCP protocol methods.
+// Embed DefaultServer for common behaviour.
+type MyServer struct {
+	*server.DefaultServer
 	// Add your custom fields here
 }
 
 // ListResources lists available resources.
-func (i *MyImplementer) ListResources(
+func (i *MyServer) ListResources(
 	ctx context.Context,
 	req *schema.ListResourcesRequest,
 ) (*schema.ListResourcesResult, *jsonrpc.Error) {
@@ -53,31 +53,32 @@ func (i *MyImplementer) ListResources(
 }
 
 // Implements indicates which methods are supported.
-func (i *MyImplementer) Implements(method string) bool {
+
+func (i *MyServer) Implements(method string) bool {
 	switch method {
 	case schema.MethodResourcesList:
 		return true
 	}
-	return i.DefaultImplementer.Implements(method) //delegate to DefaultImplementer
+	return i.DefaultServer.Implements(method) // delegate to DefaultServer
 }
 
-// New returns a factory for MyImplementer.
+// New returns a factory for MyServer.
 func New() server.NewServer {
 	return func(
 		ctx context.Context,
 		notifier transport.Notifier,
 		logger logger.Logger,
 		client client.Operations,
-	) (server.Implementer, error) {
-		base := server.NewDefaultImplementer(notifier, logger, client)
-		return &MyImplementer{DefaultImplementer: base}, nil
+) (server.Server, error) {
+		base := server.NewDefaultServer(notifier, logger, client)
+		return &MyServer{DefaultServer: base}, nil
 	}
 }
 
 ```
 
-## Example: Comprehensive Custom Implementer
-Use the `example/custom` package for a more advanced implementer with polling, notifications, and resource watching:
+## Example: Comprehensive Custom Server Implementation
+Use the `example/custom` package for a more advanced implementation with polling, notifications, and resource watching:
 ```go
 package main
 

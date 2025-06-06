@@ -268,9 +268,9 @@ func main() {
 }
 ```
 
-## Accessing Token in Implementer
+## Accessing Token in Server Implementation
 
-When implementing MCP services, you can access the authentication token from the context in your implementer methods. The token is stored in the context using the `auth.TokenKey` key and contains an instance of the `auth.Token` struct (from `github.com/viant/mcp-protocol/oauth2/auth`).
+When implementing MCP services, you can access the authentication token from the context in your server methods. The token is stored in the context using the `auth.TokenKey` key and contains an instance of the `auth.Token` struct (from `github.com/viant/mcp-protocol/oauth2/auth`).
 
 ```go
 import auth "github.com/viant/mcp-protocol/oauth2/auth"
@@ -293,14 +293,14 @@ if tokenValue != nil {
 }
 ```
 
-### Example: Using the Token in an Implementer Method
+### Example: Using the Token in a Server Method
 
-Here's a complete example showing how to access and use the token in an implementer method:
+Here's a complete example showing how to access and use the token in a server method:
 
 ```go
 import auth "github.com/viant/mcp-protocol/authorization"
 
-func (i *MyImplementer) CallTool(ctx context.Context, request *schema.CallToolRequest) (*schema.CallToolResult, *jsonrpc.Error) {
+func (i *MyServer) CallTool(ctx context.Context, request *schema.CallToolRequest) (*schema.CallToolResult, *jsonrpc.Error) {
     // Access the token from the context
     tokenValue := ctx.Value(authorization.TokenKey)
     if tokenValue != nil {
