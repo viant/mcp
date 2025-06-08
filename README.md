@@ -191,6 +191,8 @@ MCP supports the following Client Side methods:
 
 - `roots/list` - List available roots
 - `sampling/createMessage` - A standardized way for servers to request LLM sampling (“completions” or “generations”) from language models via clients.
+- `elicitation/create` - Ask the client to perform an elicitation (model completion) using provided prompts.
+- `interaction/create` - Initiate a user-interaction request, allowing the server to prompt the user via the client UI.
 
 
 can 
