@@ -8,7 +8,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1
-	github.com/viant/jsonrpc v0.6.1
+	github.com/viant/jsonrpc v0.6.2
 	github.com/viant/mcp-protocol v0.3.13-0.20250609005441-45da3a39de7e
 	github.com/viant/scy v0.24.0
 	golang.org/x/oauth2 v0.30.0
@@ -31,4 +31,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-

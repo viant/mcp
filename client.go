@@ -69,15 +69,15 @@ func (c *ClientOptions) Init() {
 }
 
 // NewClient creates an MCP client with transport and authorization configured via ClientOptions.
-func NewClient(client protoclient.Client, options *ClientOptions) (*client.Client, error) {
+func NewClient(mcpClient protoclient.Client, options *ClientOptions) (*client.Client, error) {
 	ctx := context.Background()
-	rpcTransport, authRT, err := options.getTransport(ctx, client)
+	rpcTransport, authRT, err := options.getTransport(ctx, mcpClient)
 	if err != nil {
 		return nil, err
 	}
 
 	opts := options.Options(authRT)
-	opts = append(opts, client.WithImplementer(client))
+	opts = append(opts, client.WithImplementer(mcpClient))
 
 	cli := client.New(options.Name, options.Version, rpcTransport, opts...)
 	if _, err := cli.Initialize(ctx); err != nil {

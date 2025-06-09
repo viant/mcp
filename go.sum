@@ -888,6 +888,9 @@ github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60 h1:VFJvCOHKXv4IqX
 github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60/go.mod h1:aGifi++jvCrUaklKEKT0BU95igDNaqkvz+49uaYMPRU=
 github.com/viant/gosh v0.2.1 h1:ASvDPh1P2gcfWEw00OnJggimwXDpmGxO0OploDjz83M=
 github.com/viant/gosh v0.2.1/go.mod h1:I/EJ39XLZL9vAme3CrvZ4WeiASneHJPd+pMF2njt/Mw=
+github.com/viant/jsonrpc v0.6.1/go.mod h1:LW2l5/H4KkGCsx2ktPX59iUlycw85ZlBcRuK/WYWBX8=
+github.com/viant/jsonrpc v0.6.2 h1:DLohb7sVaDihxVjSXFNyuhkk70w9TSpdWI09PhpSnr4=
+github.com/viant/jsonrpc v0.6.2/go.mod h1:LW2l5/H4KkGCsx2ktPX59iUlycw85ZlBcRuK/WYWBX8=
 github.com/viant/mcp-protocol v0.3.13-0.20250609005441-45da3a39de7e h1:vp7dA3zlbBp0ho+t/p+7RVKzNEkLOkgIa8rzxeiVPUY=
 github.com/viant/mcp-protocol v0.3.13-0.20250609005441-45da3a39de7e/go.mod h1:5kguSQyEi+M0BL314slaoGNif6magWD8oeItaJdr0+s=
 github.com/viant/scy v0.24.0 h1:KAC3IUARkQxTNSuwBK2YhVBJMOOLN30YaLKHbbuSkMU=

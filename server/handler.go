@@ -49,6 +49,7 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	}
 
 	id := conv.AsInt(request.Id)
+
 	ctx, cancel := context.WithCancel(parent)
 	activeContext, ctx := newActiveContext(ctx, cancel, request)
 

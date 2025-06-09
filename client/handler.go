@@ -14,10 +14,9 @@ type Handler struct {
 }
 
 func (h *Handler) Serve(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) {
-
+	response.Id = request.Id
+	response.Jsonrpc = request.Jsonrpc
 	if !h.client.Implements(request.Method) {
-		response.Id = request.Id
-		response.Jsonrpc = request.Jsonrpc
 		response.Error = jsonrpc.NewMethodNotFound(fmt.Sprintf("method %s not found", request.Method), nil)
 		return
 	}
