@@ -888,14 +888,8 @@ github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60 h1:VFJvCOHKXv4IqX
 github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60/go.mod h1:aGifi++jvCrUaklKEKT0BU95igDNaqkvz+49uaYMPRU=
 github.com/viant/gosh v0.2.1 h1:ASvDPh1P2gcfWEw00OnJggimwXDpmGxO0OploDjz83M=
 github.com/viant/gosh v0.2.1/go.mod h1:I/EJ39XLZL9vAme3CrvZ4WeiASneHJPd+pMF2njt/Mw=
-github.com/viant/jsonrpc v0.6.0 h1:8xmFNedTAvaHmwLZ1n4KexrzLNMunW9ZdousO5+IYd8=
-github.com/viant/jsonrpc v0.6.0/go.mod h1:LW2l5/H4KkGCsx2ktPX59iUlycw85ZlBcRuK/WYWBX8=
-github.com/viant/mcp-protocol v0.3.10 h1:YkDFUcGKNHS3NKKh6/zMvVUwkPrIG6I9On7MA7xi5E0=
-github.com/viant/mcp-protocol v0.3.10/go.mod h1:5kguSQyEi+M0BL314slaoGNif6magWD8oeItaJdr0+s=
-github.com/viant/mcp-protocol v0.3.11 h1:I3V9n3ypiJ+8pHdufsxI7xttP8Fn2bAe7oh2/KFF/M8=
-github.com/viant/mcp-protocol v0.3.11/go.mod h1:5kguSQyEi+M0BL314slaoGNif6magWD8oeItaJdr0+s=
-github.com/viant/mcp-protocol v0.3.12 h1:EKuPxbp+ssfj5Aa7Wp7Z59Rv6xOWhToXghhaHjR+tx4=
-github.com/viant/mcp-protocol v0.3.12/go.mod h1:5kguSQyEi+M0BL314slaoGNif6magWD8oeItaJdr0+s=
+github.com/viant/mcp-protocol v0.3.13-0.20250609005441-45da3a39de7e h1:vp7dA3zlbBp0ho+t/p+7RVKzNEkLOkgIa8rzxeiVPUY=
+github.com/viant/mcp-protocol v0.3.13-0.20250609005441-45da3a39de7e/go.mod h1:5kguSQyEi+M0BL314slaoGNif6magWD8oeItaJdr0+s=
 github.com/viant/scy v0.24.0 h1:KAC3IUARkQxTNSuwBK2YhVBJMOOLN30YaLKHbbuSkMU=
 github.com/viant/scy v0.24.0/go.mod h1:7uNRS67X45YN+JqTLCcMEhehffVjqrejULEDln9p0Ao=
 github.com/viant/toolbox v0.34.5/go.mod h1:OxMCG57V0PXuIP2HNQrtJf2CjqdmbrOx5EkMILuUhzM=

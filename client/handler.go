@@ -10,10 +10,11 @@ import (
 )
 
 type Handler struct {
-	client client.Operations
+	client client.Client
 }
 
 func (h *Handler) Serve(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) {
+
 	if !h.client.Implements(request.Method) {
 		response.Id = request.Id
 		response.Jsonrpc = request.Jsonrpc
@@ -38,6 +39,10 @@ func (h *Handler) Serve(ctx context.Context, request *jsonrpc.Request, response 
 	}
 }
 
+func (s *Handler) OnNotification(ctx context.Context, notification *jsonrpc.Notification) {
+	s.client.OnNotification(ctx, notification)
+}
+
 func (s *Handler) setResponse(response *jsonrpc.Response, result interface{}, rpcError *jsonrpc.Error) {
 	if rpcError != nil {
 		response.Error = rpcError
@@ -47,4 +52,9 @@ func (s *Handler) setResponse(response *jsonrpc.Response, result interface{}, rp
 	if err != nil {
 		response.Error = jsonrpc.NewInternalError(err.Error(), []byte{})
 	}
+}
+
+// NewHandler create client handler
+func NewHandler(client client.Client) *Handler {
+	return &Handler{client: client}
 }

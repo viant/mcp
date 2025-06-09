@@ -46,21 +46,16 @@ func (c *Client) Implements(method string) bool {
 }
 
 // Experimental/Proposed method names that are not yet part of the stable schema
-// package.
-const (
-	methodElicit            = "elicitation/create"
-	methodInteractionCreate = "interaction/create"
-)
 
 // Elicit asks the client to elicit additional information from the user.
 func (c *Client) Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, *jsonrpc.Error) {
-	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, methodElicit, params)
+	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, schema.MethodElicitationCreate, params)
 }
 
 // CreateUserInteraction requests that the client presents an interaction UI to
 // the user and returns their response.
 func (c *Client) CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, *jsonrpc.Error) {
-	return send[schema.CreateUserInteractionRequestParams, schema.CreateUserInteractionResult](ctx, c, methodInteractionCreate, params)
+	return send[schema.CreateUserInteractionRequestParams, schema.CreateUserInteractionResult](ctx, c, schema.MethodInteractionCreate, params)
 }
 
 // send marshals parameters, sends the request and unmarshals the result.

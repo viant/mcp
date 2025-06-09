@@ -139,6 +139,10 @@ func (c *Client) CreateUserInteraction(ctx context.Context, params *schema.Creat
 	return send[schema.CreateUserInteractionRequestParams, schema.CreateUserInteractionResult](ctx, c, methodInteractionCreate, params)
 }
 
+type versioner interface {
+	ProtocolVersion() string
+}
+
 func New(name, version string, transport transport.Transport, options ...Option) *Client {
 	ret := &Client{
 		info:      *schema.NewImplementation(name, version),
@@ -147,8 +151,31 @@ func New(name, version string, transport transport.Transport, options ...Option)
 	for _, opt := range options {
 		opt(ret)
 	}
+
 	if ret.protocolVersion == "" {
-		ret.protocolVersion = schema.LatestProtocolVersion
+		if aVersioner, ok := ret.client.(versioner); ok {
+			ret.protocolVersion = aVersioner.ProtocolVersion()
+		} else {
+			ret.protocolVersion = schema.LatestProtocolVersion
+		}
+	}
+	if ret.client != nil {
+		if ret.client.Implements(schema.MethodRootsList) {
+			ret.capabilities.Roots = &schema.ClientCapabilitiesRoots{}
+		}
+		if ret.client.Implements(schema.MethodInteractionCreate) {
+			ret.capabilities.UserInteraction = &schema.ClientCapabilitiesUserInteraction{
+				Types: []string{"ua"},
+			}
+		}
+		if ret.client.Implements(schema.MethodElicitationCreate) {
+			ret.capabilities.Elicitation = map[string]interface{}{
+				"supported": true,
+			}
+		}
+		if ret.client.Implements(schema.MethodSamplingCreateMessage) {
+			ret.capabilities.Sampling = make(map[string]interface{})
+		}
 	}
 	return ret
 }

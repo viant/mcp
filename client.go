@@ -69,15 +69,15 @@ func (c *ClientOptions) Init() {
 }
 
 // NewClient creates an MCP client with transport and authorization configured via ClientOptions.
-func NewClient(implementer protoclient.Operations, options *ClientOptions) (*client.Client, error) {
+func NewClient(client protoclient.Client, options *ClientOptions) (*client.Client, error) {
 	ctx := context.Background()
-	rpcTransport, authRT, err := options.getTransport(ctx)
+	rpcTransport, authRT, err := options.getTransport(ctx, client)
 	if err != nil {
 		return nil, err
 	}
 
 	opts := options.Options(authRT)
-	opts = append(opts, client.WithImplementer(implementer))
+	opts = append(opts, client.WithImplementer(client))
 
 	cli := client.New(options.Name, options.Version, rpcTransport, opts...)
 	if _, err := cli.Initialize(ctx); err != nil {
@@ -87,7 +87,7 @@ func NewClient(implementer protoclient.Operations, options *ClientOptions) (*cli
 }
 
 // getTransport constructs a JSON-RPC transport based on ClientOptions.Transport and authentication settings.
-func (c *ClientOptions) getTransport(ctx context.Context) (transport.Transport, *authtransport.RoundTripper, error) {
+func (c *ClientOptions) getTransport(ctx context.Context, mcpClient protoclient.Client) (transport.Transport, *authtransport.RoundTripper, error) {
 	var httpClient *http.Client
 	var authRT *authtransport.RoundTripper
 	if c.Auth != nil {
@@ -117,6 +117,7 @@ func (c *ClientOptions) getTransport(ctx context.Context) (transport.Transport, 
 		}
 	}
 
+	clientHandler := client.NewHandler(mcpClient)
 	switch c.Transport.Type {
 
 	case "stdio":
@@ -124,7 +125,9 @@ func (c *ClientOptions) getTransport(ctx context.Context) (transport.Transport, 
 		if stdioOptions.Command == "" {
 			return nil, nil, fmt.Errorf("command is required for stdio transport")
 		}
-		ret, err := stdio.New(stdioOptions.Command, stdio.WithArguments(stdioOptions.Arguments...))
+		ret, err := stdio.New(stdioOptions.Command,
+			stdio.WithHandler(clientHandler),
+			stdio.WithArguments(stdioOptions.Arguments...))
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create stdio transport: %w", err)
 		}
@@ -138,6 +141,7 @@ func (c *ClientOptions) getTransport(ctx context.Context) (transport.Transport, 
 		if httpClient != nil {
 			opts = append(opts, sse.WithHttpClient(httpClient), sse.WithMessageHttpClient(httpClient))
 		}
+		opts = append(opts, sse.WithHandler(clientHandler))
 		ret, err := sse.New(ctx, c.Transport.ClientTransportHTTP.URL, opts...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create SSE transport: %w", err)
@@ -150,6 +154,7 @@ func (c *ClientOptions) getTransport(ctx context.Context) (transport.Transport, 
 		if httpClient != nil {
 			opts = append(opts, streaming.WithHTTPClient(httpClient))
 		}
+		opts = append(opts, streaming.WithHandler(clientHandler))
 		ret, err := streaming.New(ctx, httpOptions.URL, opts...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create streaming transport: %w", err)
