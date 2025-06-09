@@ -99,7 +99,7 @@ func startServer() error {
 	}
 	terminalTool := tool.NewTool(goshService)
 	NewServer := serverproto.WithDefaultServer(context.Background(), func(server *serverproto.DefaultServer) error {
-		serverproto.RegisterTool[*tool.TerminalCommand](server.Registry, "terminal", "Run terminal commands", terminalTool.Call)
+		serverproto.RegisterTool[*tool.TerminalCommand, *tool.CommandOutput](server.Registry, "terminal", "Run terminal commands", terminalTool.Call)
 		return err
 	})
 

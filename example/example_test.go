@@ -2,6 +2,7 @@ package example
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/viant/jsonrpc"
 	"github.com/viant/mcp-protocol/schema"
@@ -23,10 +24,19 @@ func Usage_Example() {
 			A int `json:"a"`
 			B int `json:"b"`
 		}
+
+		type Result struct {
+			Result int `json:"acc"`
+		}
 		// Register a simple calculator tool: adds two integers
-		if err := serverproto.RegisterTool[*Addition](server.Registry, "add", "Add two integers", func(ctx context.Context, input *Addition) (*schema.CallToolResult, *jsonrpc.Error) {
+		if err := serverproto.RegisterTool[*Addition, *Result](server.Registry, "add", "Add two integers", func(ctx context.Context, input *Addition) (*schema.CallToolResult, *jsonrpc.Error) {
 			sum := input.A + input.B
-			return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{{Text: fmt.Sprintf("%d", sum)}}}, nil
+			out := &Result{Result: sum}
+			data, err := json.Marshal(out)
+			if err != nil {
+				return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to marshal result: %v", err), nil)
+			}
+			return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{{Text: string(data)}}}, nil
 		}); err != nil {
 			return err
 		}

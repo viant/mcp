@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/viant/gosh"
 	"github.com/viant/jsonrpc"
@@ -16,6 +17,12 @@ type TerminalCommand struct {
 
 type TerminalTool struct {
 	service *gosh.Service
+}
+
+type CommandOutput struct {
+	Stdout string `json:"stdout"`
+	Stderr string `json:"stderr"`
+	Code   int    `json:"code"`
 }
 
 func (t *TerminalTool) Call(ctx context.Context, input *TerminalCommand) (*schema.CallToolResult, *jsonrpc.Error) {
@@ -37,13 +44,24 @@ func (t *TerminalTool) Call(ctx context.Context, input *TerminalCommand) (*schem
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), []byte(cmdString))
 	}
+
+	cmdOutput := &CommandOutput{
+		Stdout: output,
+		Code:   code,
+	}
+
 	if code != 0 {
 		isError := true
 		result.IsError = &isError
 	}
+
+	data, err := json.Marshal(cmdOutput)
+	if err != nil {
+		return nil, jsonrpc.NewInternalError(err.Error(), []byte(cmdString))
+	}
 	result.Content = []schema.CallToolResultContentElem{
 		{
-			Text: output,
+			Text: string(data),
 		},
 	}
 	return result, nil
