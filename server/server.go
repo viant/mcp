@@ -28,7 +28,7 @@ type Server struct {
 	httpServer
 }
 
-func (s *Server) cancelOperation(id int) {
+func (s *Server) CancelOperation(id int) {
 	if active, ok := s.activeContexts.Get(id); ok {
 		active.CancelFunc()
 		s.activeContexts.Delete(id)

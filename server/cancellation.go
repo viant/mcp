@@ -16,6 +16,6 @@ func (h *Handler) Cancel(ctx context.Context, notification *jsonrpc.Notification
 	if request.Params.RequestId == 0 {
 		return jsonrpc.NewInvalidParamsError("invalid requestId", notification.Params)
 	}
-	h.cancelOperation(int(request.Params.RequestId))
+	h.CancelOperation(int(request.Params.RequestId))
 	return nil
 }

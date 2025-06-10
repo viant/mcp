@@ -46,7 +46,7 @@ type MyHandler struct {
 // ListResources lists available resources.
 func (i *MyHandler) ListResources(
 	ctx context.Context,
-	req *schema.ListResourcesRequest,
+	req  *jsonrpc.TypedRequest[*schema.ListResourcesRequest],
 ) (*schema.ListResourcesResult, *jsonrpc.Error) {
 	// Implement resource listing
 	return &schema.ListResourcesResult{Resources: nil}, nil

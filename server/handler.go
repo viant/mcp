@@ -68,7 +68,7 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	}
 
 	h.activeContexts.Put(id, activeContext)
-	defer h.cancelOperation(id)
+	defer h.CancelOperation(id)
 
 	switch request.Method {
 	case schema.MethodInitialize:

@@ -14,7 +14,8 @@ func (h *Handler) ListPrompts(ctx context.Context, request *jsonrpc.Request) (*s
 	if err := json.Unmarshal(request.Params, &listPromptsRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %h", err), request.Params)
 	}
-	return h.handler.ListPrompts(ctx, listPromptsRequest)
+	id, _ := jsonrpc.AsRequestIntId(request.Id)
+	return h.handler.ListPrompts(ctx, &jsonrpc.TypedRequest[*schema.ListPromptsRequest]{Request: listPromptsRequest, Id: uint64(id)})
 }
 
 // GetPrompt handles the prompts/get method
@@ -23,5 +24,6 @@ func (h *Handler) GetPrompt(ctx context.Context, request *jsonrpc.Request) (*sch
 	if err := json.Unmarshal(request.Params, &getPromptRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.handler.GetPrompt(ctx, getPromptRequest)
+	id, _ := jsonrpc.AsRequestIntId(request.Id)
+	return h.handler.GetPrompt(ctx, &jsonrpc.TypedRequest[*schema.GetPromptRequest]{Request: getPromptRequest, Id: uint64(id)})
 }

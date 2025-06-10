@@ -14,5 +14,6 @@ func (h *Handler) CreateUserInteractionRequest(ctx context.Context, request *jso
 	if err := json.Unmarshal(request.Params, &uiReq.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.handler.CreateUserInteraction(ctx, &uiReq.Params)
+	id, _ := jsonrpc.AsRequestIntId(request.Id)
+	return h.handler.CreateUserInteraction(ctx, &jsonrpc.TypedRequest[*schema.CreateUserInteractionRequest]{Request: uiReq, Id: uint64(id)})
 }

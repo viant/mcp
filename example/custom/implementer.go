@@ -20,7 +20,7 @@ import (
 )
 
 type (
-	Server struct {
+	Handler struct {
 		*protoserver.DefaultHandler
 		config    *Config
 		fs        afs.Service
@@ -35,7 +35,7 @@ type (
 	}
 )
 
-func (i *Server) watchLoop(ctx context.Context) {
+func (i *Handler) watchLoop(ctx context.Context) {
 	tick := time.NewTicker(2 * time.Second) // make interval configurable
 	defer tick.Stop()
 
@@ -52,9 +52,9 @@ func (i *Server) watchLoop(ctx context.Context) {
 }
 
 // Subscribe adds the URI to the subscription map.
-func (i *Server) Subscribe(ctx context.Context, request *schema.SubscribeRequest) (*schema.SubscribeResult, *jsonrpc.Error) {
-	i.Subscription.Put(request.Params.Uri, true)
-	object, err := i.fs.Object(ctx, request.Params.Uri)
+func (i *Handler) Subscribe(ctx context.Context, request *jsonrpc.TypedRequest[*schema.SubscribeRequest]) (*schema.SubscribeResult, *jsonrpc.Error) {
+	i.Subscription.Put(request.Request.Params.Uri, true)
+	object, err := i.fs.Object(ctx, request.Request.Params.Uri)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -62,7 +62,7 @@ func (i *Server) Subscribe(ctx context.Context, request *schema.SubscribeRequest
 		i.snapshot.Put(object.URL(), object)
 	}
 	if object.IsDir() {
-		objects, err := i.fs.List(ctx, request.Params.Uri)
+		objects, err := i.fs.List(ctx, request.Request.Params.Uri)
 		if err != nil {
 			return nil, jsonrpc.NewInternalError(err.Error(), nil)
 		}
@@ -76,7 +76,7 @@ func (i *Server) Subscribe(ctx context.Context, request *schema.SubscribeRequest
 	return &schema.SubscribeResult{}, nil
 }
 
-func (i *Server) ListResources(ctx context.Context, request *schema.ListResourcesRequest) (*schema.ListResourcesResult, *jsonrpc.Error) {
+func (i *Handler) ListResources(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListResourcesRequest]) (*schema.ListResourcesResult, *jsonrpc.Error) {
 	objects, err := i.fs.List(ctx, i.config.BaseURL, i.config.Options...)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
@@ -102,12 +102,12 @@ func (i *Server) ListResources(ctx context.Context, request *schema.ListResource
 	return &schema.ListResourcesResult{Resources: resources}, nil
 }
 
-func (i *Server) ReadResource(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
-	object, err := i.fs.Object(ctx, request.Params.Uri)
+func (i *Handler) ReadResource(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ReadResourceRequest]) (*schema.ReadResourceResult, *jsonrpc.Error) {
+	object, err := i.fs.Object(ctx, request.Request.Params.Uri)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
-	data, err := i.fs.DownloadWithURL(ctx, request.Params.Uri, i.config.Options...)
+	data, err := i.fs.DownloadWithURL(ctx, request.Request.Params.Uri, i.config.Options...)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -136,7 +136,7 @@ func (i *Server) ReadResource(ctx context.Context, request *schema.ReadResourceR
 }
 
 // Implements returns true if the method is supported by this implementer
-func (i *Server) Implements(method string) bool {
+func (i *Handler) Implements(method string) bool {
 	switch method {
 	case schema.MethodResourcesList, schema.MethodResourcesRead, schema.MethodSubscribe, schema.MethodUnsubscribe:
 		return true
@@ -144,7 +144,7 @@ func (i *Server) Implements(method string) bool {
 	return i.Implements(method)
 }
 
-func (i *Server) pollChanges(ctx context.Context) error {
+func (i *Handler) pollChanges(ctx context.Context) error {
 	for _, object := range i.snapshot.Values() {
 		if object.IsDir() {
 			continue
@@ -163,7 +163,7 @@ func (i *Server) pollChanges(ctx context.Context) error {
 	return nil
 }
 
-func (i *Server) notifyResourceUpdated(ctx context.Context, uri string) error {
+func (i *Handler) notifyResourceUpdated(ctx context.Context, uri string) error {
 	notification, err := jsonrpc.NewNotification(schema.MethodNotificationResourceUpdated, map[string]string{"uri": uri})
 	if err != nil {
 		return fmt.Errorf("failed to create notification: %w", err)
@@ -171,7 +171,7 @@ func (i *Server) notifyResourceUpdated(ctx context.Context, uri string) error {
 	return i.Notifier.Notify(ctx, notification)
 }
 
-func (i *Server) ensureWatcher() {
+func (i *Handler) ensureWatcher() {
 	i.mutex.Lock()
 	defer i.mutex.Unlock()
 	if i.stopWatch != nil { // already running
@@ -197,11 +197,11 @@ func isBinary(data []byte) bool {
 	return ratio > 0.3
 }
 
-// New creates a new Server instance
+// New creates a new Handler instance
 func New(config *Config) protoserver.NewHandler {
 	return func(_ context.Context, notifier transport.Notifier, logger logger.Logger, client protoclient.Operations) (protoserver.Handler, error) {
 		base := protoserver.NewDefaultHandler(notifier, logger, client)
-		ret := &Server{
+		ret := &Handler{
 			fs:             afs.New(),
 			config:         config,
 			DefaultHandler: base,

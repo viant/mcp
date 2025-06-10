@@ -14,5 +14,6 @@ func (h *Handler) CreateMessageRequest(ctx context.Context, request *jsonrpc.Req
 	if err := json.Unmarshal(request.Params, &listRootRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.handler.CreateMessage(ctx, &listRootRequest.Params)
+	id, _ := jsonrpc.AsRequestIntId(request.Id)
+	return h.handler.CreateMessage(ctx, &jsonrpc.TypedRequest[*schema.CreateMessageRequest]{Request: listRootRequest, Id: uint64(id)})
 }
