@@ -21,7 +21,7 @@ import (
 
 type (
 	Server struct {
-		*protoserver.DefaultServer
+		*protoserver.DefaultHandler
 		config    *Config
 		fs        afs.Service
 		snapshot  *syncmap.Map[string, storage.Object]
@@ -141,7 +141,7 @@ func (i *Server) Implements(method string) bool {
 	case schema.MethodResourcesList, schema.MethodResourcesRead, schema.MethodSubscribe, schema.MethodUnsubscribe:
 		return true
 	}
-	return i.DefaultServer.Implements(method)
+	return i.Implements(method)
 }
 
 func (i *Server) pollChanges(ctx context.Context) error {
@@ -198,14 +198,14 @@ func isBinary(data []byte) bool {
 }
 
 // New creates a new Server instance
-func New(config *Config) protoserver.NewServer {
-	return func(_ context.Context, notifier transport.Notifier, logger logger.Logger, client protoclient.Operations) (protoserver.Server, error) {
-		base := protoserver.NewDefaultServer(notifier, logger, client)
+func New(config *Config) protoserver.NewHandler {
+	return func(_ context.Context, notifier transport.Notifier, logger logger.Logger, client protoclient.Operations) (protoserver.Handler, error) {
+		base := protoserver.NewDefaultHandler(notifier, logger, client)
 		ret := &Server{
-			fs:            afs.New(),
-			config:        config,
-			DefaultServer: base,
-			snapshot:      syncmap.NewMap[string, storage.Object](),
+			fs:             afs.New(),
+			config:         config,
+			DefaultHandler: base,
+			snapshot:       syncmap.NewMap[string, storage.Object](),
 		}
 		ret.ensureWatcher()
 		return ret, nil

@@ -14,7 +14,7 @@ func (h *Handler) ListTools(ctx context.Context, request *jsonrpc.Request) (*sch
 	if err := json.Unmarshal(request.Params, &listToolsRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.server.ListTools(ctx, listToolsRequest)
+	return h.handler.ListTools(ctx, listToolsRequest)
 }
 
 // CallTool handles the tools/call method
@@ -23,5 +23,5 @@ func (h *Handler) CallTool(ctx context.Context, request *jsonrpc.Request) (*sche
 	if err := json.Unmarshal(request.Params, &callToolRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.server.CallTool(ctx, callToolRequest)
+	return h.handler.CallTool(ctx, callToolRequest)
 }

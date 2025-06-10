@@ -13,7 +13,7 @@ import (
 
 func Usage_Example() {
 
-	NewServer := serverproto.WithDefaultServer(context.Background(), func(server *serverproto.DefaultServer) error {
+	newHandler := serverproto.WithDefaultHandler(context.Background(), func(server *serverproto.DefaultHandler) error {
 		// Register a simple resource
 		server.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
 			func(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
@@ -44,7 +44,7 @@ func Usage_Example() {
 	})
 
 	srv, err := server.New(
-		server.WithNewServer(NewServer),
+		server.WithNewHandler(newHandler),
 		server.WithImplementation(schema.Implementation{"default", "1.0"}),
 	)
 	if err != nil {

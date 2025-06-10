@@ -22,10 +22,10 @@ func WithMetadata(metadata map[string]any) Option {
 	}
 }
 
-// WithImplementer with client
-func WithImplementer(impl client.Operations) Option {
+// WithClientHandler with clientHandler
+func WithClientHandler(handler client.Handler) Option {
 	return func(c *Client) {
-		c.client = impl
+		c.clientHandler = handler
 	}
 }
 

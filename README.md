@@ -35,14 +35,14 @@ MCP is built around the following components:
 
 2. **Server**: Handles incoming requests and dispatches to the protocol implementation
 3. **Client**: Makes requests to MCP-compatible servers
-4. **Protocol Implementation (server.Server)**: Provides the actual functionality behind each protocol method
+4. **Protocol Implementation (server.Handler)**: Provides the actual functionality behind each protocol method
 
 ### High-Level Architecture
 
 ```mermaid
 graph LR
     Client[MCP Client] -->|JSON-RPC / HTTP/SSE| Server[MCP Server]
-    Server -->|Dispatches to| Implementation[MCP Server]
+    Server -->|Dispatches to| Handler[MCP Server]
     subgraph Auth[Authentication / Authorization]
       OAuth2[OAuth2 / OIDC]
     end
@@ -64,7 +64,7 @@ If you just need to connect **existing tools** to a remote MCP server you might 
 
 #### Quick Start: Default Server
 
-[DefaultServer](github.com/viant/mcp-protocol/server/default) can be used to quickly set up an MCP server.
+[DefaultHandler](github.com/viant/mcp-protocol/server/handler.go) can be used to quickly set up an MCP server.
 It provides no-op stubs for all methods, allowing you to focus on implementing only the methods you need.
 Register handlers inline without writing a custom server type:
 
@@ -73,6 +73,7 @@ package main
 
 import (
   "context"
+  "encoding/json"
   "fmt"
   "github.com/viant/jsonrpc"
   "github.com/viant/mcp-protocol/schema"
@@ -83,38 +84,55 @@ import (
 
 func main() {
 
-
   type Addition struct {
     A int `json:"a"`
     B int `json:"b"`
   }
-  
-  NewServer := serverproto.WithDefaultServer(context.Background(), func(srv *serverproto.Server) error {
+
+  type Output struct {
+    Result int
+  }
+
+  newHandler := serverproto.WithDefaultHandler(context.Background(), func(server *serverproto.DefaultHandler) error {
     // Register a simple resource
-    srv.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
+    server.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
       func(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
         return &schema.ReadResourceResult{Contents: []schema.ReadResourceResultContentsElem{{Text: "Hello, world!"}}}, nil
       })
 
+    type Addition struct {
+      A int `json:"a"`
+      B int `json:"b"`
+    }
+
+    type Result struct {
+      Result int `json:"acc"`
+    }
     // Register a simple calculator tool: adds two integers
-    if err := serverproto.RegisterTool[*Addition](srv, "add", "Add two integers", func(ctx context.Context, input *Addition) (*schema.CallToolResult, *jsonrpc.Error) {
+    if err := serverproto.RegisterTool[*Addition, *Result](server.Registry, "add", "Add two integers", func(ctx context.Context, input *Addition) (*schema.CallToolResult, *jsonrpc.Error) {
       sum := input.A + input.B
-      return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{{Text: fmt.Sprintf("%d", sum)}}}, nil
+      out := &Result{Result: sum}
+      data, err := json.Marshal(out)
+      if err != nil {
+        return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to marshal result: %v", err), nil)
+      }
+      return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{{Text: string(data)}}}, nil
     }); err != nil {
       return err
     }
-	return nil
+    return nil
   })
 
-  serverInstance, err := server.New(
-    server.WithNewServer(NewServer),
+  srv, err := server.New(
+    server.WithNewHandler(newHandler),
     server.WithImplementation(schema.Implementation{"default", "1.0"}),
   )
   if err != nil {
     log.Fatalf("Failed to create server: %v", err)
   }
 
-  log.Fatal(serverInstance.HTTP(context.Background(), ":4981").ListenAndServe())
+  log.Fatal(srv.HTTP(context.Background(), ":4981").ListenAndServe())
+
 }
 ```
 

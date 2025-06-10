@@ -11,7 +11,7 @@ import (
 	"github.com/viant/mcp/client/auth"
 )
 
-var errUninitialized = fmt.Errorf("client is not initialized")
+var errUninitialized = fmt.Errorf("clientHandler is not initialized")
 
 type Client struct {
 	capabilities    schema.ClientCapabilities
@@ -20,7 +20,7 @@ type Client struct {
 	protocolVersion string
 	transport       transport.Transport // server version
 	initialized     bool
-	client          client.Operations
+	clientHandler   client.Handler
 	authInterceptor *auth.Authorizer
 }
 
@@ -114,7 +114,7 @@ func (c *Client) SetLevel(ctx context.Context, params *schema.SetLevelRequestPar
 	return send[schema.SetLevelRequestParams, schema.SetLevelResult](ctx, c, schema.MethodLoggingSetLevel, params)
 }
 
-// ----- New client operations (client side RPC methods) -----
+// ----- New clientHandler operations (clientHandler side RPC methods) -----
 
 func (c *Client) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, error) {
 	return send[schema.ListRootsRequestParams, schema.ListRootsResult](ctx, c, schema.MethodRootsList, params)
@@ -153,34 +153,34 @@ func New(name, version string, transport transport.Transport, options ...Option)
 	}
 
 	if ret.protocolVersion == "" {
-		if aVersioner, ok := ret.client.(versioner); ok {
+		if aVersioner, ok := ret.clientHandler.(versioner); ok {
 			ret.protocolVersion = aVersioner.ProtocolVersion()
 		} else {
 			ret.protocolVersion = schema.LatestProtocolVersion
 		}
 	}
-	if ret.client != nil {
-		if ret.client.Implements(schema.MethodRootsList) {
+	if ret.clientHandler != nil {
+		if ret.clientHandler.Implements(schema.MethodRootsList) {
 			ret.capabilities.Roots = &schema.ClientCapabilitiesRoots{}
 		}
-		if ret.client.Implements(schema.MethodInteractionCreate) {
+		if ret.clientHandler.Implements(schema.MethodInteractionCreate) {
 			ret.capabilities.UserInteraction = &schema.ClientCapabilitiesUserInteraction{
 				Types: []string{"ua"},
 			}
 		}
-		if ret.client.Implements(schema.MethodElicitationCreate) {
+		if ret.clientHandler.Implements(schema.MethodElicitationCreate) {
 			ret.capabilities.Elicitation = map[string]interface{}{
 				"supported": true,
 			}
 		}
-		if ret.client.Implements(schema.MethodSamplingCreateMessage) {
+		if ret.clientHandler.Implements(schema.MethodSamplingCreateMessage) {
 			ret.capabilities.Sampling = make(map[string]interface{})
 		}
 	}
 	return ret
 }
 
-// WithAuthInterceptor attaches an Authorizer to the client, enabling automatic retry
+// WithAuthInterceptor attaches an Authorizer to the clientHandler, enabling automatic retry
 // of requests when receiving a 401 Unauthorized response. The interceptor's Intercept
 // method will be called after each Send.
 func WithAuthInterceptor(authorizer *auth.Authorizer) Option {

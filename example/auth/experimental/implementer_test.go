@@ -111,7 +111,7 @@ func startServer() error {
 		return err
 	}
 	terminalTool := tool.NewTool(goshService)
-	NewServer := serverproto.WithDefaultServer(context.Background(), func(server *serverproto.DefaultServer) error {
+	NewServer := serverproto.WithDefaultHandler(context.Background(), func(server *serverproto.DefaultHandler) error {
 		serverproto.RegisterTool[*tool.TerminalCommand, *tool.CommandOutput](server.Registry, "terminal", "Run terminal commands", terminalTool.Call)
 		return nil
 	})
@@ -123,7 +123,7 @@ func startServer() error {
 
 	var options = []server.Option{
 		server.WithJRPCAuthorizer(authService.EnsureAuthorized),
-		server.WithNewServer(NewServer),
+		server.WithNewHandler(NewServer),
 		server.WithImplementation(schema.Implementation{"MCP Terminal", "0.1"}),
 	}
 	srv, err := server.New(options...)

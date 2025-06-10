@@ -7,10 +7,10 @@ import (
 	"net/http"
 )
 
-// Option is a function that configures the server.
+// Option is a function that configures the handler.
 type Option func(s *Server) error
 
-// WithCORS adds a new CORS handler to the server.
+// WithCORS adds a new CORS handler to the handler.
 func WithCORS(cors *Cors) Option {
 	return func(s *Server) error {
 		handler := &corsHandler{Cors: cors}
@@ -26,7 +26,7 @@ func WithProtectedResourcesHandler(handler http.HandlerFunc) Option {
 	}
 }
 
-// WithAuthorizer adds a new authorizer to the server.
+// WithAuthorizer adds a new authorizer to the handler.
 func WithAuthorizer(authorizer Middleware) Option {
 	return func(s *Server) error {
 		s.authorizer = authorizer
@@ -34,7 +34,7 @@ func WithAuthorizer(authorizer Middleware) Option {
 	}
 }
 
-// WithJRPCAuthorizer adds a new JRPCAuthorizer to the server.
+// WithJRPCAuthorizer adds a new JRPCAuthorizer to the handler.
 func WithJRPCAuthorizer(authorizer auth.JRPCAuthorizer) Option {
 	return func(s *Server) error {
 		s.jRPCAuthorizer = authorizer
@@ -42,7 +42,7 @@ func WithJRPCAuthorizer(authorizer auth.JRPCAuthorizer) Option {
 	}
 }
 
-// WithImplementation sets the server implementation.
+// WithImplementation sets the handler implementation.
 func WithImplementation(implementation schema.Implementation) Option {
 	return func(s *Server) error {
 		s.info = implementation
@@ -50,10 +50,10 @@ func WithImplementation(implementation schema.Implementation) Option {
 	}
 }
 
-// WithNewServer sets the new server.
-func WithNewServer(NewServer server.NewServer) Option {
+// WithNewHandler sets the new handler.
+func WithNewHandler(newHandler server.NewHandler) Option {
 	return func(s *Server) error {
-		s.newServer = NewServer
+		s.newServer = newHandler
 		return nil
 	}
 }
@@ -74,18 +74,18 @@ func WithEndpointAddress(addr string) Option {
 	}
 }
 
-// WithCustomHandler adds a custom handler to the server.
-func WithCustomHandler(path string, handler http.HandlerFunc) Option {
+// WithCustomHTTPHandler adds a custom handler to the handler.
+func WithCustomHTTPHandler(path string, handler http.HandlerFunc) Option {
 	return func(s *Server) error {
-		if s.customHandlers == nil {
-			s.customHandlers = make(map[string]http.HandlerFunc)
+		if s.customHTTPHandlers == nil {
+			s.customHTTPHandlers = make(map[string]http.HandlerFunc)
 		}
-		s.customHandlers[path] = handler
+		s.customHTTPHandlers[path] = handler
 		return nil
 	}
 }
 
-// WithProtocolVersion sets the protocol version for the server.
+// WithProtocolVersion sets the protocol version for the handler.
 func WithProtocolVersion(version string) Option {
 	return func(s *Server) error {
 		s.protocolVersion = version

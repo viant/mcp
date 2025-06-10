@@ -8,7 +8,7 @@ import (
 	"github.com/viant/mcp/client"
 )
 
-// Adapter adapts a server Handler to implement the client.Interface
+// Adapter adapts a handler Handler to implement the client.Interface
 type Adapter struct {
 	handler *Handler
 }
@@ -307,7 +307,7 @@ func (a *Adapter) Complete(ctx context.Context, params *schema.CompleteRequestPa
 	return &result, nil
 }
 
-// Ping pings the server
+// Ping pings the handler
 func (a *Adapter) Ping(ctx context.Context, params *schema.PingRequestParams) (*schema.PingResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodPing, params)
 	if err != nil {

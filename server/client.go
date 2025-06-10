@@ -8,8 +8,8 @@ import (
 	"github.com/viant/mcp-protocol/schema"
 )
 
-// Client implements mcp-protocol/client.Operations for the server side. It allows
-// server implementers to invoke client-side RPC methods over the same transport
+// Client implements mcp-protocol/client.Operations for the handler side. It allows
+// handler implementers to invoke client-side RPC methods over the same transport
 // channel on which the original request arrived.
 type Client struct {
 	implements map[string]bool

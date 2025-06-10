@@ -14,7 +14,7 @@ func (h *Handler) ListResources(ctx context.Context, request *jsonrpc.Request) (
 	if err := json.Unmarshal(request.Params, &listResourcesRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.server.ListResources(ctx, listResourcesRequest)
+	return h.handler.ListResources(ctx, listResourcesRequest)
 }
 
 // ListResourceTemplates handles the resources/templates/list method
@@ -24,7 +24,7 @@ func (h *Handler) ListResourceTemplates(ctx context.Context, request *jsonrpc.Re
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
 
-	return h.server.ListResourceTemplates(ctx, listTemplatesRequest)
+	return h.handler.ListResourceTemplates(ctx, listTemplatesRequest)
 }
 
 // ReadResource handles the resources/read method
@@ -33,7 +33,7 @@ func (h *Handler) ReadResource(ctx context.Context, request *jsonrpc.Request) (*
 	if err := json.Unmarshal(request.Params, &readRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.server.ReadResource(ctx, readRequest)
+	return h.handler.ReadResource(ctx, readRequest)
 }
 
 // Subscribe handles the resources/subscribe method
@@ -42,7 +42,7 @@ func (h *Handler) Subscribe(ctx context.Context, request *jsonrpc.Request) (*sch
 	if err := json.Unmarshal(request.Params, &subscribeRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.server.Subscribe(ctx, subscribeRequest)
+	return h.handler.Subscribe(ctx, subscribeRequest)
 }
 
 // Unsubscribe handles the resources/unsubscribe method
@@ -51,5 +51,5 @@ func (h *Handler) Unsubscribe(ctx context.Context, request *jsonrpc.Request) (*s
 	if err := json.Unmarshal(request.Params, &unsubscribeRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	return h.server.Unsubscribe(ctx, unsubscribeRequest)
+	return h.handler.Unsubscribe(ctx, unsubscribeRequest)
 }

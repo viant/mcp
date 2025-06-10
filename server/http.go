@@ -8,19 +8,19 @@ import (
 )
 
 type httpServer struct {
-	sseHandler       *sse.Handler
-	streamingHandler *streaming.Handler
-	useStreaming     bool
-	addr             string
-	customHandlers   map[string]http.HandlerFunc
+	sseHandler         *sse.Handler
+	streamingHandler   *streaming.Handler
+	useStreaming       bool
+	addr               string
+	customHTTPHandlers map[string]http.HandlerFunc
 }
 
-// UseStreaming sets whether to use streaming or SSE for the HTTP server.
+// UseStreaming sets whether to use streaming or SSE for the HTTP handler.
 func (s *Server) UseStreaming(useStreaming bool) {
 	s.useStreaming = useStreaming
 }
 
-// HTTP creates and returns an HTTP server with OAuth2 authorizer and SSE handlers.
+// HTTP creates and returns an HTTP handler with OAuth2 authorizer and SSE handlers.
 func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 	if addr == "" {
 		addr = s.addr
@@ -32,8 +32,8 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 	s.sseHandler = sse.New(s.NewHandler)
 	s.streamingHandler = streaming.New(s.NewHandler)
 	mux := http.NewServeMux()
-	if len(s.customHandlers) > 0 {
-		for path, handler := range s.customHandlers {
+	if len(s.customHTTPHandlers) > 0 {
+		for path, handler := range s.customHTTPHandlers {
 			mux.Handle(path, handler)
 		}
 	}

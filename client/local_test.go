@@ -13,7 +13,7 @@ import (
 )
 
 func TestClient(t *testing.T) {
-	//t.Skip("Skipping stdio client tests after protocol refactor")
+	//t.Skip("Skipping stdio clientHandler tests after protocol refactor")
 	ctx := context.Background()
 	//transport, err := getStdioTransport(ctx)
 	transport, err := getHttpTransport(ctx)
@@ -22,7 +22,7 @@ func TestClient(t *testing.T) {
 		return
 	}
 
-	// Create a new client
+	// Create a new clientHandler
 	client := New("datly", "0.1", transport, WithCapabilities(schema.ClientCapabilities{
 		Experimental: make(schema.ClientCapabilitiesExperimental),
 		Roots:        &schema.ClientCapabilitiesRoots{},
@@ -33,7 +33,7 @@ func TestClient(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, result)
 
-	//templateResources, err := client.ListResourceTemplates(ctx, nil)
+	//templateResources, err := clientHandler.ListResourceTemplates(ctx, nil)
 	//assert.Nil(t, err)
 	//assert.NotNil(t, templateResources)
 
@@ -41,7 +41,7 @@ func TestClient(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, tools)
 
-	//client.CallTool(ctx, &schema.CallToolRequestParams{
+	//clientHandler.CallTool(ctx, &schema.CallToolRequestParams{
 	//	Name: "vendor",
 	//	Arguments: map[string]any{
 	//		"VendorName": "",

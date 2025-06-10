@@ -5,9 +5,9 @@ import (
 	"github.com/viant/mcp-protocol/schema"
 )
 
-// Interface defines the client interface for all exported methods
+// Interface defines the clientHandler interface for all exported methods
 type Interface interface {
-	// Initialize initializes the client
+	// Initialize initializes the clientHandler
 	Initialize(ctx context.Context) (*schema.InitializeResult, error)
 
 	// ListResourceTemplates lists resource templates
@@ -46,18 +46,18 @@ type Interface interface {
 	// SetLevel sets the logging level
 	SetLevel(ctx context.Context, params *schema.SetLevelRequestParams) (*schema.SetLevelResult, error)
 
-	// ----- New operations defined in mcp-protocol/client/operations.go -----
+	// ----- New operations defined in mcp-protocol/clientHandler/operations.go -----
 
-	// ListRoots lists client roots (client side capability discovery)
+	// ListRoots lists clientHandler roots (clientHandler side capability discovery)
 	ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, error)
 
-	// CreateMessage creates a sampling message on the client side
+	// CreateMessage creates a sampling message on the clientHandler side
 	CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams) (*schema.CreateMessageResult, error)
 
-	// Elicit is a server-initiated request asking the client to elicit additional information from the end-user
+	// Elicit is a server-initiated request asking the clientHandler to elicit additional information from the end-user
 	Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, error)
 
-	// CreateUserInteraction asks the client to display a UI interaction to the user and return their response
+	// CreateUserInteraction asks the clientHandler to display a UI interaction to the user and return their response
 	CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, error)
 }
 

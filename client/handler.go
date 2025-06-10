@@ -10,13 +10,13 @@ import (
 )
 
 type Handler struct {
-	client client.Client
+	handler client.Handler
 }
 
 func (h *Handler) Serve(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) {
 	response.Id = request.Id
 	response.Jsonrpc = request.Jsonrpc
-	if !h.client.Implements(request.Method) {
+	if !h.handler.Implements(request.Method) {
 		response.Error = jsonrpc.NewMethodNotFound(fmt.Sprintf("method %s not found", request.Method), nil)
 		return
 	}
@@ -39,7 +39,7 @@ func (h *Handler) Serve(ctx context.Context, request *jsonrpc.Request, response 
 }
 
 func (s *Handler) OnNotification(ctx context.Context, notification *jsonrpc.Notification) {
-	s.client.OnNotification(ctx, notification)
+	s.handler.OnNotification(ctx, notification)
 }
 
 func (s *Handler) setResponse(response *jsonrpc.Response, result interface{}, rpcError *jsonrpc.Error) {
@@ -53,7 +53,7 @@ func (s *Handler) setResponse(response *jsonrpc.Response, result interface{}, rp
 	}
 }
 
-// NewHandler create client handler
-func NewHandler(client client.Client) *Handler {
-	return &Handler{client: client}
+// NewHandler create clientHandler clientHandler
+func NewHandler(client client.Handler) *Handler {
+	return &Handler{handler: client}
 }

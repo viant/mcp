@@ -22,7 +22,7 @@ func (h *Handler) Initialize(ctx context.Context, request *jsonrpc.Request) (*sc
 		Capabilities:    schema.ServerCapabilities{},
 		Instructions:    h.instructions,
 	}
-	h.server.Initialize(ctx, h.clientInitialize, &result)
+	h.handler.Initialize(ctx, h.clientInitialize, &result)
 	return &result, nil
 }
 

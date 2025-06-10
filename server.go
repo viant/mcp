@@ -46,14 +46,14 @@ type ServerOptionAuth struct {
 }
 
 // NewServer creates a new MCP server with the given implementer and options.
-func NewServer(NewServer protoserver.NewServer, options *ServerOptions) (*server.Server, error) {
-	if NewServer == nil {
+func NewServer(newHandler protoserver.NewHandler, options *ServerOptions) (*server.Server, error) {
+	if newHandler == nil {
 		return nil, fmt.Errorf("new implementer was nil")
 	}
 
 	// Start with mandatory implementer option
 	var serverOptions []server.Option
-	serverOptions = append(serverOptions, server.WithNewServer(NewServer))
+	serverOptions = append(serverOptions, server.WithNewHandler(newHandler))
 
 	// Flag to switch the HTTP transport to streaming mode
 	useStreaming := false
@@ -133,7 +133,7 @@ func NewServer(NewServer protoserver.NewServer, options *ServerOptions) (*server
 			if len(transportOptions.CustomHandlers) > 0 {
 				// add custom handlers to the server options
 				for path, handler := range transportOptions.CustomHandlers {
-					serverOptions = append(serverOptions, server.WithCustomHandler(path, handler))
+					serverOptions = append(serverOptions, server.WithCustomHTTPHandler(path, handler))
 				}
 			}
 		}

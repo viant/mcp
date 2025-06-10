@@ -98,7 +98,7 @@ func startServer() error {
 		return err
 	}
 	terminalTool := tool.NewTool(goshService)
-	NewServer := serverproto.WithDefaultServer(context.Background(), func(server *serverproto.DefaultServer) error {
+	NewServer := serverproto.WithDefaultHandler(context.Background(), func(server *serverproto.DefaultHandler) error {
 		serverproto.RegisterTool[*tool.TerminalCommand, *tool.CommandOutput](server.Registry, "terminal", "Run terminal commands", terminalTool.Call)
 		return err
 	})
@@ -110,7 +110,7 @@ func startServer() error {
 	var options = []server.Option{
 		server.WithAuthorizer(authService.Middleware),
 		server.WithProtectedResourcesHandler(authService.ProtectedResourcesHandler),
-		server.WithNewServer(NewServer),
+		server.WithNewHandler(NewServer),
 		server.WithImplementation(schema.Implementation{"MCP Terminal", "0.1"}),
 	}
 	srv, err := server.New(options...)

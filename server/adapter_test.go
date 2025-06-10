@@ -10,21 +10,21 @@ import (
 )
 
 func TestServerAsClient(t *testing.T) {
-	// Create a server with a default server
-	NewServer := serverproto.WithDefaultServer(context.Background(), func(server *serverproto.DefaultServer) error {
+	// Create a handler with a default handler
+	NewServer := serverproto.WithDefaultHandler(context.Background(), func(server *serverproto.DefaultHandler) error {
 		// Register a simple resource
 		server.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"}, nil)
 		return nil
 	})
 
 	srv, err := New(
-		WithNewServer(NewServer),
+		WithNewHandler(NewServer),
 		WithImplementation(schema.Implementation{"TestServer", "1.0"}),
 	)
 	assert.NoError(t, err)
 	assert.NotNil(t, srv)
 
-	// Get a client interface from the server
+	// Get a client interface from the handler
 	ctx := context.Background()
 	clientInterface := srv.AsClient(ctx)
 	assert.NotNil(t, clientInterface)

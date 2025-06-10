@@ -16,7 +16,7 @@ import (
 type Server struct {
 	activeContexts            *syncmap.Map[int, *activeContext]
 	info                      schema.Implementation
-	newServer                 server.NewServer
+	newServer                 server.NewHandler
 	instructions              *string
 	protocolVersion           string
 	loggerName                string
@@ -51,11 +51,11 @@ func (s *Server) newHandler(ctx context.Context, transport transport.Transport) 
 	ret.Logger = NewLogger(ret.loggerName, &ret.loggingLevel, ret.Notifier)
 
 	aClient := NewClient(ret.clientFeatures, transport)
-	ret.server, ret.err = s.newServer(ctx, transport, ret.Logger, aClient)
+	ret.handler, ret.err = s.newServer(ctx, transport, ret.Logger, aClient)
 	return ret
 }
 
-// AsClient returns a client.Interface implementation that uses this server directly
+// AsClient returns a client.Interface implementation that uses this handler directly
 func (s *Server) AsClient(ctx context.Context) client.Interface {
 	// Create a handler with a nil transport
 	handler := s.newHandler(ctx, nil)
@@ -65,13 +65,13 @@ func (s *Server) AsClient(ctx context.Context) client.Interface {
 // New creates a new Server instance
 func New(options ...Option) (*Server, error) {
 	corsHandler := &corsHandler{defaultCors()}
-	// initialize server
+	// initialize handler
 	s := &Server{
 		info: schema.Implementation{
 			Name:    "MCP",
 			Version: "0.1",
 		},
-		loggerName:      "server",
+		loggerName:      "handler",
 		protocolVersion: schema.LatestProtocolVersion,
 		activeContexts:  syncmap.NewMap[int, *activeContext](),
 		corsHandler:     corsHandler.Middleware,
@@ -83,7 +83,7 @@ func New(options ...Option) (*Server, error) {
 	}
 
 	if s.newServer == nil {
-		return nil, errors.New("no server specified")
+		return nil, errors.New("no handler specified")
 	}
 	return s, nil
 }

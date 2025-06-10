@@ -1,21 +1,21 @@
 <!-- Automatically generated. Guided implementation documentation for MCP implementers. -->
 # Implementer Guide
 
-MCP implementers provide the application-specific functionality for the MCP protocol. Implementers must satisfy the `server.Server` interface, handling protocol methods such as resource listing, reading, tool invocation, and more.
+MCP implementers provide the application-specific functionality for the MCP protocol. Implementers must satisfy the `server.Handler` interface, handling protocol methods such as resource listing, reading, tool invocation, and more.
 
-## Server Interface
+## Handler Interface
 
-An implementer is registered via the `server.NewServer` factory:
+A handler is registered via the `server.NewHandler` factory:
 ```go
-type NewServer func(
+type NewHandler func(
     ctx context.Context,
     notifier transport.Notifier,
     logger logger.Logger,
     client client.Operations,
-) server.Server
+) server.Handler
 ```
 
-Your implementer should embed `server.DefaultServer` to leverage common functionality and implement the methods corresponding to the MCP schema you need. Key methods include:
+Your implementer should embed `server.DefaultHandler` to leverage common functionality and implement the methods corresponding to the MCP schema you need. Key methods include:
 - `ListResources` (`resources/list`)
 - `ReadResource` (`resources/read`)
 - `ListTools` (`tools/list`)
@@ -38,13 +38,13 @@ import (
 
 // MyServer implements the MCP protocol methods.
 // Embed DefaultServer for common behaviour.
-type MyServer struct {
-	*server.DefaultServer
+type MyHandler struct {
+	*server.DefaultHandler
 	// Add your custom fields here
 }
 
 // ListResources lists available resources.
-func (i *MyServer) ListResources(
+func (i *MyHandler) ListResources(
 	ctx context.Context,
 	req *schema.ListResourcesRequest,
 ) (*schema.ListResourcesResult, *jsonrpc.Error) {
@@ -54,7 +54,7 @@ func (i *MyServer) ListResources(
 
 // Implements indicates which methods are supported.
 
-func (i *MyServer) Implements(method string) bool {
+func (i *MyHandler) Implements(method string) bool {
 	switch method {
 	case schema.MethodResourcesList:
 		return true
@@ -63,15 +63,15 @@ func (i *MyServer) Implements(method string) bool {
 }
 
 // New returns a factory for MyServer.
-func New() server.NewServer {
+func New() server.NewHandler {
 	return func(
 		ctx context.Context,
 		notifier transport.Notifier,
 		logger logger.Logger,
 		client client.Operations,
-) (server.Server, error) {
-		base := server.NewDefaultServer(notifier, logger, client)
-		return &MyServer{DefaultServer: base}, nil
+) (server.Handler, error) {
+		base := server.NewDefaultHandler(notifier, logger, client)
+		return &MyHandler{DefaultHandler: base}, nil
 	}
 }
 
@@ -79,36 +79,37 @@ func New() server.NewServer {
 
 ## Example: Comprehensive Custom Server Implementation
 Use the `example/custom` package for a more advanced implementation with polling, notifications, and resource watching:
+
 ```go
 package main
 
 import (
-    "context"
-    "embed"
-    "log"
+	"context"
+	"embed"
+	"log"
 
-    "github.com/viant/afs/storage"
-    "github.com/viant/mcp/example/custom"
-    "github.com/viant/mcp/server"
-    "github.com/viant/mcp-protocol/schema"
+	"github.com/viant/afs/storage"
+	"github.com/viant/mcp/example/custom"
+	"github.com/viant/mcp/server"
+	"github.com/viant/mcp-protocol/schema"
 )
 
 //go:embed data/*
 var embedFS embed.FS
 
 func main() {
-    config := &custom.Config{
-        BaseURL: "embed://data",
-        Options: []storage.Option{embedFS},
-    }
-    NewServer := custom.New(config)
-    srv, err := server.New(
-        server.WithNewServer(NewServer),
-        server.WithImplementation(schema.Implementation{"custom", "1.0"}),
-    )
-    if err != nil {
-        log.Fatalf("Failed to create server: %v", err)
-    }
-    log.Fatal(srv.HTTP(context.Background(), ":4981").ListenAndServe())
+	config := &custom.Config{
+		BaseURL: "embed://data",
+		Options: []storage.Option{embedFS},
+	}
+	newHandler := custom.New(config)
+	srv, err := server.New(
+		server.WithNewHandler(newHandler),
+		server.WithImplementation(schema.Implementation{"custom", "1.0"}),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create server: %v", err)
+	}
+	log.Fatal(srv.HTTP(context.Background(), ":4981").ListenAndServe())
 }
 ```

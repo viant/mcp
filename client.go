@@ -69,15 +69,15 @@ func (c *ClientOptions) Init() {
 }
 
 // NewClient creates an MCP client with transport and authorization configured via ClientOptions.
-func NewClient(mcpClient protoclient.Client, options *ClientOptions) (*client.Client, error) {
+func NewClient(handler protoclient.Handler, options *ClientOptions) (*client.Client, error) {
 	ctx := context.Background()
-	rpcTransport, authRT, err := options.getTransport(ctx, mcpClient)
+	rpcTransport, authRT, err := options.getTransport(ctx, handler)
 	if err != nil {
 		return nil, err
 	}
 
 	opts := options.Options(authRT)
-	opts = append(opts, client.WithImplementer(mcpClient))
+	opts = append(opts, client.WithClientHandler(handler))
 
 	cli := client.New(options.Name, options.Version, rpcTransport, opts...)
 	if _, err := cli.Initialize(ctx); err != nil {
@@ -87,7 +87,7 @@ func NewClient(mcpClient protoclient.Client, options *ClientOptions) (*client.Cl
 }
 
 // getTransport constructs a JSON-RPC transport based on ClientOptions.Transport and authentication settings.
-func (c *ClientOptions) getTransport(ctx context.Context, mcpClient protoclient.Client) (transport.Transport, *authtransport.RoundTripper, error) {
+func (c *ClientOptions) getTransport(ctx context.Context, handler protoclient.Handler) (transport.Transport, *authtransport.RoundTripper, error) {
 	var httpClient *http.Client
 	var authRT *authtransport.RoundTripper
 	if c.Auth != nil {
@@ -117,7 +117,7 @@ func (c *ClientOptions) getTransport(ctx context.Context, mcpClient protoclient.
 		}
 	}
 
-	clientHandler := client.NewHandler(mcpClient)
+	clientHandler := client.NewHandler(handler)
 	switch c.Transport.Type {
 
 	case "stdio":

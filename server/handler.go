@@ -20,7 +20,7 @@ type Handler struct {
 	*Server
 	clientInitialize *schema.InitializeRequestParams
 	loggingLevel     schema.LoggingLevel
-	server           server.Server
+	handler          server.Handler
 	authorizer       auth.JRPCAuthorizer //note that http level authorized is implemented as middleware
 	clientFeatures   map[string]bool
 	Initialized      bool
@@ -42,7 +42,7 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	case schema.MethodInitialize, schema.MethodPing:
 	case schema.MethodLoggingSetLevel:
 	default:
-		if !h.server.Implements(request.Method) {
+		if !h.handler.Implements(request.Method) {
 			response.Error = jsonrpc.NewMethodNotFound(fmt.Sprintf("method: %v not found", request.Method), request.Params)
 			return
 		}
@@ -136,5 +136,5 @@ func (h *Handler) OnNotification(ctx context.Context, notification *jsonrpc.Noti
 		h.Initialized = true
 		return
 	}
-	h.server.OnNotification(ctx, notification)
+	h.handler.OnNotification(ctx, notification)
 }

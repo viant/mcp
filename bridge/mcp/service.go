@@ -251,13 +251,13 @@ func getOAuthOptions(ctx context.Context, cfg *Options) ([]sse.Option, error) {
 // HTTP starts an HTTP/SSE server on the given address that proxies MCP JSON-RPC calls to the client endpoint.
 func (s *Service) HTTP(ctx context.Context, addr string) (*http.Server, error) {
 	// build a NewServer that forwards requests to the client.Interface
-	NewServer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, _ protoClient.Operations) (protoserver.Server, error) {
+	NewServer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, _ protoClient.Operations) (protoserver.Handler, error) {
 		impl := &clientImplementer{sseClient: s.sseClient}
 		return impl, nil
 	}
 	// create a server with our proxy implementer
 	srv, err := mcpserver.New(
-		mcpserver.WithNewServer(NewServer),
+		mcpserver.WithNewHandler(NewServer),
 	)
 	if err != nil {
 		return nil, err
@@ -267,12 +267,12 @@ func (s *Service) HTTP(ctx context.Context, addr string) (*http.Server, error) {
 
 // Stdio starts a JSON-RPC server over standard input/output that proxies MCP calls to the client endpoint.
 func (s *Service) Stdio(ctx context.Context) (*stdiosrv.Server, error) {
-	NewServer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, _ protoClient.Operations) (protoserver.Server, error) {
+	NewServer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, _ protoClient.Operations) (protoserver.Handler, error) {
 		impl := &clientImplementer{sseClient: s.sseClient}
 		return impl, nil
 	}
 	srv, err := mcpserver.New(
-		mcpserver.WithNewServer(NewServer),
+		mcpserver.WithNewHandler(NewServer),
 	)
 	if err != nil {
 		return nil, err

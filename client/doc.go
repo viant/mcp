@@ -1,4 +1,4 @@
-// Package client implements a high-level Go client for the Model Context Protocol (MCP).
+// Package clientHandler implements a high-level Go clientHandler for the Model Context Protocol (MCP).
 //
 // It provides a thin wrapper around the protocol interface defined in the
 // github.com/viant/mcp-protocol module and adds:
@@ -15,7 +15,7 @@
 // Example:
 //
 //	sseTransport, _ := sse.New(ctx, "https://mcp.example.com/sse")
-//	cli := client.New("demo", "1.0", sseTransport, client.WithCapabilities(schema.ClientCapabilities{}))
+//	cli := clientHandler.New("demo", "1.0", sseTransport, clientHandler.WithCapabilities(schema.ClientCapabilities{}))
 //	res, _ := cli.ListResources(ctx, nil)
 //	fmt.Println(res.Resources)
 package client
