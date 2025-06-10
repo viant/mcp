@@ -37,7 +37,7 @@ import (
 )
 
 // MyServer implements the MCP protocol methods.
-// Embed DefaultServer for common behaviour.
+// Embed DefaultHandler for common behaviour.
 type MyHandler struct {
 	*server.DefaultHandler
 	// Add your custom fields here
@@ -59,7 +59,7 @@ func (i *MyHandler) Implements(method string) bool {
 	case schema.MethodResourcesList:
 		return true
 	}
-	return i.DefaultServer.Implements(method) // delegate to DefaultServer
+	return i.DefaultHandler.Implements(method) // delegate to DefaultHandler
 }
 
 // New returns a factory for MyServer.
