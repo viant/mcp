@@ -27,20 +27,20 @@ import (
 
 // ClientOptions defines options for configuring an MCP client.
 type ClientOptions struct {
-	Name            string          `yaml:"name" json:"name"  short:"n" long:"name" description:"mcp name"`
-	Version         string          `yaml:"version" json:"version"  short:"v" long:"version" description:"mcp version"`
-	ProtocolVersion string          `yaml:"protocol" json:"protocol"  short:"p" long:"protocol" description:"mcp protocol"`
-	Namespace       string          `yaml:"namespace" json:"namespace"  short:"N" long:"namespace" description:"mcp namespace"`
-	Transport       ClientTransport `yaml:"transport" json:"transport"  short:"t" long:"transport" description:"mcp transport options"`
-	Auth            *ClientAuth     `yaml:"auth" json:"auth"  short:"a" long:"auth" description:"mcp auth options"`
+	Name            string          `yaml:"name" json:"name,omitempty"  short:"n" long:"name" description:"mcp name"`
+	Version         string          `yaml:"version" json:"version,omitempty"  short:"v" long:"version" description:"mcp version"`
+	ProtocolVersion string          `yaml:"protocol" json:"protocol,omitempty"  short:"p" long:"protocol" description:"mcp protocol"`
+	Namespace       string          `yaml:"namespace" json:"namespace,omitempty"  short:"N" long:"namespace" description:"mcp namespace"`
+	Transport       ClientTransport `yaml:"transport" json:"transport,omitempty"  short:"t" long:"transport" description:"mcp transport options"`
+	Auth            *ClientAuth     `yaml:"auth" json:"auth,omitempty"  short:"a" long:"auth" description:"mcp auth options"`
 }
 
 // ClientAuth defines authentication options for an MCP client.
 type ClientAuth struct {
-	OAuth2ConfigURL    []string `yaml:"oauth2ConfigURL" json:"oauth2ConfigURL"  short:"c" long:"config" description:"oauth2 config file"`
-	EncryptionKey      string   `yaml:"encryptionKey" json:"encryptionKey"  short:"k" long:"key" description:"encryption key"`
-	UseIdToken         bool     `yaml:"useIdToken" json:"useIdToken"`
-	BackendForFrontend bool     `yaml:"backendForFrontend" json:"backendForFrontend"  short:"b" long:"backend-for-frontend" description:"use backend for frontend"`
+	OAuth2ConfigURL    []string `yaml:"oauth2ConfigURL" json:"oauth2ConfigURL,omitempty"  short:"c" long:"config" description:"oauth2 config file"`
+	EncryptionKey      string   `yaml:"encryptionKey" json:"encryptionKey,omitempty"  short:"k" long:"key" description:"encryption key"`
+	UseIdToken         bool     `yaml:"useIdToken" json:"useIdToken,omitempty"`
+	BackendForFrontend bool     `yaml:"backendForFrontend" json:"backendForFrontend,omitempty"  short:"b" long:"backend-for-frontend" description:"use backend for frontend"`
 }
 
 // ClientTransport defines transport options for an MCP client.
