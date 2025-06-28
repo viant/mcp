@@ -135,10 +135,6 @@ func (c *Client) Elicit(ctx context.Context, params *schema.ElicitRequestParams)
 	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, methodElicit, params)
 }
 
-func (c *Client) CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, error) {
-	return send[schema.CreateUserInteractionRequestParams, schema.CreateUserInteractionResult](ctx, c, methodInteractionCreate, params)
-}
-
 type versioner interface {
 	ProtocolVersion() string
 }
@@ -162,11 +158,6 @@ func New(name, version string, transport transport.Transport, options ...Option)
 	if ret.clientHandler != nil {
 		if ret.clientHandler.Implements(schema.MethodRootsList) {
 			ret.capabilities.Roots = &schema.ClientCapabilitiesRoots{}
-		}
-		if ret.clientHandler.Implements(schema.MethodInteractionCreate) {
-			ret.capabilities.UserInteraction = &schema.ClientCapabilitiesUserInteraction{
-				Types: []string{"ua"},
-			}
 		}
 		if ret.clientHandler.Implements(schema.MethodElicitationCreate) {
 			ret.capabilities.Elicitation = map[string]interface{}{

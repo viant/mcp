@@ -74,24 +74,6 @@ func (a *Adapter) Elicit(ctx context.Context, params *schema.ElicitRequestParams
 	return &result, nil
 }
 
-// CreateUserInteraction proxies "interaction/create" to the underlying handler.
-func (a *Adapter) CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, error) {
-	req, err := jsonrpc.NewRequest(adapterMethodInteractionCreate, params)
-	if err != nil {
-		return nil, err
-	}
-	response := &jsonrpc.Response{}
-	a.handler.Serve(ctx, req, response)
-	if response.Error != nil {
-		return nil, response.Error
-	}
-	var result schema.CreateUserInteractionResult
-	if err = json.Unmarshal(response.Result, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
 // Initialize initializes the client
 func (a *Adapter) Initialize(ctx context.Context) (*schema.InitializeResult, error) {
 	params := &schema.InitializeRequestParams{}

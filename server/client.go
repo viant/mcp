@@ -25,9 +25,6 @@ func (c *Client) Init(ctx context.Context, capabilities *schema.ClientCapabiliti
 	if capabilities.Roots != nil {
 		c.implements[schema.MethodRootsList] = true
 	}
-	if capabilities.UserInteraction != nil {
-		c.implements[schema.MethodInteractionCreate] = true
-	}
 	if capabilities.Sampling != nil {
 		c.implements[schema.MethodSamplingCreateMessage] = true
 	}
@@ -73,16 +70,6 @@ func (c *Client) Elicit(ctx context.Context, request *jsonrpc.TypedRequest[*sche
 	}
 	request.Method = schema.MethodElicitationCreate
 	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, schema.MethodElicitationCreate, request.Id, &request.Request.Params)
-}
-
-// CreateUserInteraction requests that the client presents an interaction UI to
-// the user and returns their response.
-func (c *Client) CreateUserInteraction(ctx context.Context, request *jsonrpc.TypedRequest[*schema.CreateUserInteractionRequest]) (*schema.CreateUserInteractionResult, *jsonrpc.Error) {
-	if request.Id == 0 {
-		request.Id = c.NextRequestId()
-	}
-	request.Method = schema.MethodElicitationCreate
-	return send[schema.CreateUserInteractionRequestParams, schema.CreateUserInteractionResult](ctx, c, schema.MethodInteractionCreate, request.Id, &request.Request.Params)
 }
 
 // send marshals parameters, sends the request and unmarshals the result.

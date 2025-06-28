@@ -52,7 +52,7 @@ func startServer() error {
 	})
 	srv, err := server.New(
 		server.WithNewHandler(NewServer),
-		server.WithImplementation(schema.Implementation{"FS", "0.1"}),
+		server.WithImplementation(schema.Implementation{Name: "FS", Version: "0.1"}),
 	)
 
 	if err != nil {

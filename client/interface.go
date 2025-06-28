@@ -56,9 +56,6 @@ type Interface interface {
 
 	// Elicit is a server-initiated request asking the clientHandler to elicit additional information from the end-user
 	Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, error)
-
-	// CreateUserInteraction asks the clientHandler to display a UI interaction to the user and return their response
-	CreateUserInteraction(ctx context.Context, params *schema.CreateUserInteractionRequestParams) (*schema.CreateUserInteractionResult, error)
 }
 
 // Ensure Client implements Interface
