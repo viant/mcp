@@ -21,7 +21,7 @@ import (
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
 
-	protoclient "github.com/viant/mcp-protocol/client"
+	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp/client"
 )
 
@@ -71,8 +71,15 @@ func (c *ClientOptions) Init() {
 }
 
 // NewClient creates an MCP client with transport and authorization configured via ClientOptions.
-func NewClient(handler protoclient.Handler, options *ClientOptions) (*client.Client, error) {
+func NewClient(handler pclient.Handler, options *ClientOptions) (*client.Client, error) {
 	ctx := context.Background()
+
+	// Build initial transport and capture a factory for future reconnects.
+	dial := func(ctx context.Context) (transport.Transport, error) {
+		t, _, err := options.getTransport(ctx, handler)
+		return t, err
+	}
+
 	rpcTransport, authRT, err := options.getTransport(ctx, handler)
 	if err != nil {
 		return nil, err
@@ -80,6 +87,7 @@ func NewClient(handler protoclient.Handler, options *ClientOptions) (*client.Cli
 
 	opts := options.Options(authRT)
 	opts = append(opts, client.WithClientHandler(handler))
+	opts = append(opts, client.WithReconnect(dial))
 
 	cli := client.New(options.Name, options.Version, rpcTransport, opts...)
 	if _, err := cli.Initialize(ctx); err != nil {
@@ -89,7 +97,7 @@ func NewClient(handler protoclient.Handler, options *ClientOptions) (*client.Cli
 }
 
 // getTransport constructs a JSON-RPC transport based on ClientOptions.Transport and authentication settings.
-func (c *ClientOptions) getTransport(ctx context.Context, handler protoclient.Handler) (transport.Transport, *authtransport.RoundTripper, error) {
+func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handler) (transport.Transport, *authtransport.RoundTripper, error) {
 	var httpClient *http.Client
 	var authRT *authtransport.RoundTripper
 	if c.Auth != nil {

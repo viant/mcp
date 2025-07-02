@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/viant/jsonrpc"
-	"github.com/viant/mcp-protocol/client"
+	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
 )
 
 type Handler struct {
-	handler client.Handler
+	handler pclient.Handler
 }
 
 func (h *Handler) Serve(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) {
@@ -51,6 +52,6 @@ func (s *Handler) setResponse(response *jsonrpc.Response, result interface{}, rp
 }
 
 // NewHandler create clientHandler clientHandler
-func NewHandler(client client.Handler) *Handler {
-	return &Handler{handler: client}
+func NewHandler(handler pclient.Handler) *Handler {
+	return &Handler{handler: handler}
 }

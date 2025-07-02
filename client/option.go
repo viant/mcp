@@ -1,7 +1,9 @@
 package client
 
 import (
-	"github.com/viant/mcp-protocol/client"
+	"context"
+	"github.com/viant/jsonrpc/transport"
+	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
 )
 
@@ -23,7 +25,7 @@ func WithMetadata(metadata map[string]any) Option {
 }
 
 // WithClientHandler with clientHandler
-func WithClientHandler(handler client.Handler) Option {
+func WithClientHandler(handler pclient.Handler) Option {
 	return func(c *Client) {
 		c.clientHandler = handler
 	}
@@ -32,5 +34,15 @@ func WithClientHandler(handler client.Handler) Option {
 func WithProtocolVersion(version string) Option {
 	return func(c *Client) {
 		c.protocolVersion = version
+	}
+}
+
+// WithReconnect sets reconnect function that can rebuild transport and perform re-initialization.
+// It is used internally to automatically recover from transport-level errors like expired sessions.
+// External callers typically do not need to set this option directly – it is configured by the
+// mcp.NewClient helper that builds an MCP client from ClientOptions.
+func WithReconnect(reconnect func(ctx context.Context) (transport.Transport, error)) Option {
+	return func(c *Client) {
+		c.reconnect = reconnect
 	}
 }

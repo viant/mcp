@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
-	"github.com/viant/mcp-protocol/client"
+	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/client/auth"
 )
@@ -20,8 +22,11 @@ type Client struct {
 	protocolVersion string
 	transport       transport.Transport // server version
 	initialized     bool
-	clientHandler   client.Handler
+	clientHandler   pclient.Handler
 	authInterceptor *auth.Authorizer
+
+	// reconnect builds new transport and re-initialises handshake when the underlying session is lost.
+	reconnect func(ctx context.Context) (transport.Transport, error)
 }
 
 func (c *Client) isInitialized() bool {
@@ -110,6 +115,22 @@ func (c *Client) Unsubscribe(ctx context.Context, params *schema.UnsubscribeRequ
 	return send[schema.UnsubscribeRequestParams, schema.UnsubscribeResult](ctx, c, schema.MethodUnsubscribe, params)
 }
 
+// reconnectAndInitialize attempts to rebuild underlying transport using reconnect callback.
+// It returns error if reconnect function is not configured or initialization fails.
+func (c *Client) reconnectAndInitialize(ctx context.Context) error {
+	if c.reconnect == nil {
+		return fmt.Errorf("reconnect is not configured")
+	}
+	newTransport, err := c.reconnect(ctx)
+	if err != nil {
+		return err
+	}
+	c.transport = newTransport
+	c.initialized = false
+	_, err = c.Initialize(ctx)
+	return err
+}
+
 func (c *Client) SetLevel(ctx context.Context, params *schema.SetLevelRequestParams) (*schema.SetLevelResult, error) {
 	return send[schema.SetLevelRequestParams, schema.SetLevelResult](ctx, c, schema.MethodLoggingSetLevel, params)
 }
@@ -192,7 +213,21 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 	// Send initial request
 	response, err := clientTransport.Send(ctx, req)
 	if err != nil {
-		return nil, jsonrpc.NewInternalError(err.Error(), nil)
+		// Automatic session recovery – if the server has been restarted, the existing session can be lost.
+		// In that case the transport returns an HTTP 404 error containing "session '<id>' not found".
+		if strings.Contains(err.Error(), "session") && strings.Contains(err.Error(), "not found") {
+			if recErr := client.reconnectAndInitialize(ctx); recErr == nil {
+				// Construct fresh request to avoid duplicate id after successful reconnect
+				req, _ = jsonrpc.NewRequest(method, parameters)
+				response, err = client.transport.Send(ctx, req)
+			} else {
+				// if reconnect failed, propagate original error for visibility
+				return nil, jsonrpc.NewInternalError(recErr.Error(), nil)
+			}
+		}
+		if err != nil {
+			return nil, jsonrpc.NewInternalError(err.Error(), nil)
+		}
 	}
 	// Optionally intercept 401 Unauthorized and retry with token
 	if client.authInterceptor != nil {
