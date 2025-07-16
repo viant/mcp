@@ -24,9 +24,9 @@ func TestClient(t *testing.T) {
 
 	// Create a new clientHandler
 	client := New("datly", "0.1", transport, WithCapabilities(schema.ClientCapabilities{
-		Experimental: make(schema.ClientCapabilitiesExperimental),
+		Experimental: make(map[string]map[string]any),
 		Roots:        &schema.ClientCapabilitiesRoots{},
-		Sampling:     make(schema.ClientCapabilitiesSampling),
+		Sampling:     make(map[string]any),
 	}))
 	result, err := client.Initialize(ctx)
 

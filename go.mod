@@ -9,12 +9,10 @@ require (
 	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1
 	github.com/viant/jsonrpc v0.7.5
-	github.com/viant/mcp-protocol v0.5.4
+	github.com/viant/mcp-protocol v0.5.5
 	github.com/viant/scy v0.24.0
 	golang.org/x/oauth2 v0.30.0
 )
-
-replace github.com/viant/jsonrpc => ../jsonrpc
 
 require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
