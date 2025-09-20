@@ -11,6 +11,7 @@ import (
 	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/client/auth"
+	authtransport "github.com/viant/mcp/client/auth/transport"
 )
 
 var errUninitialized = fmt.Errorf("clientHandler is not initialized")
@@ -33,7 +34,7 @@ func (c *Client) isInitialized() bool {
 	return c.initialized
 }
 
-func (c *Client) Initialize(ctx context.Context) (*schema.InitializeResult, error) {
+func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*schema.InitializeResult, error) {
 	params := &schema.InitializeRequestParams{
 		Capabilities:    c.capabilities,
 		ClientInfo:      c.info,
@@ -43,6 +44,15 @@ func (c *Client) Initialize(ctx context.Context) (*schema.InitializeResult, erro
 	req, err := jsonrpc.NewRequest(schema.MethodInitialize, params)
 	if err != nil {
 		return nil, jsonrpc.NewInvalidRequest(err.Error(), nil)
+	}
+	if ro := NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			req = withAuthMeta(req, ro.StringToken)
+			ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
+		}
 	}
 	response, err := c.transport.Send(ctx, req)
 	if err != nil {
@@ -61,58 +71,58 @@ func (c *Client) Initialize(ctx context.Context) (*schema.InitializeResult, erro
 	return &result, nil
 }
 
-func (c *Client) ListResourceTemplates(ctx context.Context, cursor *string) (*schema.ListResourceTemplatesResult, error) {
+func (c *Client) ListResourceTemplates(ctx context.Context, cursor *string, options ...RequestOption) (*schema.ListResourceTemplatesResult, error) {
 	params := &schema.ListResourceTemplatesRequestParams{Cursor: cursor}
-	return send[schema.ListResourceTemplatesRequestParams, schema.ListResourceTemplatesResult](ctx, c, schema.MethodResourcesTemplatesList, params)
+	return send[schema.ListResourceTemplatesRequestParams, schema.ListResourceTemplatesResult](ctx, c, schema.MethodResourcesTemplatesList, params, options...)
 }
 
-func (c *Client) ListResources(ctx context.Context, cursor *string) (*schema.ListResourcesResult, error) {
+func (c *Client) ListResources(ctx context.Context, cursor *string, options ...RequestOption) (*schema.ListResourcesResult, error) {
 	params := &schema.ListResourcesRequestParams{
 		Cursor: cursor,
 	}
-	return send[schema.ListResourcesRequestParams, schema.ListResourcesResult](ctx, c, schema.MethodResourcesList, params)
+	return send[schema.ListResourcesRequestParams, schema.ListResourcesResult](ctx, c, schema.MethodResourcesList, params, options...)
 }
 
-func (c *Client) ListPrompts(ctx context.Context, cursor *string) (*schema.ListPromptsResult, error) {
+func (c *Client) ListPrompts(ctx context.Context, cursor *string, options ...RequestOption) (*schema.ListPromptsResult, error) {
 	params := &schema.ListPromptsRequestParams{
 		Cursor: cursor,
 	}
-	return send[schema.ListPromptsRequestParams, schema.ListPromptsResult](ctx, c, schema.MethodPromptsList, params)
+	return send[schema.ListPromptsRequestParams, schema.ListPromptsResult](ctx, c, schema.MethodPromptsList, params, options...)
 }
 
-func (c *Client) ListTools(ctx context.Context, cursor *string) (*schema.ListToolsResult, error) {
+func (c *Client) ListTools(ctx context.Context, cursor *string, options ...RequestOption) (*schema.ListToolsResult, error) {
 	params := &schema.ListToolsRequestParams{
 		Cursor: cursor,
 	}
-	return send[schema.ListToolsRequestParams, schema.ListToolsResult](ctx, c, schema.MethodToolsList, params)
+	return send[schema.ListToolsRequestParams, schema.ListToolsResult](ctx, c, schema.MethodToolsList, params, options...)
 }
 
-func (c *Client) ReadResource(ctx context.Context, params *schema.ReadResourceRequestParams) (*schema.ReadResourceResult, error) {
-	return send[schema.ReadResourceRequestParams, schema.ReadResourceResult](ctx, c, schema.MethodResourcesRead, params)
+func (c *Client) ReadResource(ctx context.Context, params *schema.ReadResourceRequestParams, options ...RequestOption) (*schema.ReadResourceResult, error) {
+	return send[schema.ReadResourceRequestParams, schema.ReadResourceResult](ctx, c, schema.MethodResourcesRead, params, options...)
 }
 
-func (c *Client) GetPrompt(ctx context.Context, params *schema.GetPromptRequestParams) (*schema.GetPromptResult, error) {
-	return send[schema.GetPromptRequestParams, schema.GetPromptResult](ctx, c, schema.MethodPromptsGet, params)
+func (c *Client) GetPrompt(ctx context.Context, params *schema.GetPromptRequestParams, options ...RequestOption) (*schema.GetPromptResult, error) {
+	return send[schema.GetPromptRequestParams, schema.GetPromptResult](ctx, c, schema.MethodPromptsGet, params, options...)
 }
 
-func (c *Client) CallTool(ctx context.Context, params *schema.CallToolRequestParams) (*schema.CallToolResult, error) {
-	return send[schema.CallToolRequestParams, schema.CallToolResult](ctx, c, schema.MethodToolsCall, params)
+func (c *Client) CallTool(ctx context.Context, params *schema.CallToolRequestParams, options ...RequestOption) (*schema.CallToolResult, error) {
+	return send[schema.CallToolRequestParams, schema.CallToolResult](ctx, c, schema.MethodToolsCall, params, options...)
 }
 
-func (c *Client) Complete(ctx context.Context, params *schema.CompleteRequestParams) (*schema.CompleteResult, error) {
-	return send[schema.CompleteRequestParams, schema.CompleteResult](ctx, c, schema.MethodComplete, params)
+func (c *Client) Complete(ctx context.Context, params *schema.CompleteRequestParams, options ...RequestOption) (*schema.CompleteResult, error) {
+	return send[schema.CompleteRequestParams, schema.CompleteResult](ctx, c, schema.MethodComplete, params, options...)
 }
 
-func (c *Client) Ping(ctx context.Context, params *schema.PingRequestParams) (*schema.PingResult, error) {
-	return send[schema.PingRequestParams, schema.PingResult](ctx, c, schema.MethodPing, params)
+func (c *Client) Ping(ctx context.Context, params *schema.PingRequestParams, options ...RequestOption) (*schema.PingResult, error) {
+	return send[schema.PingRequestParams, schema.PingResult](ctx, c, schema.MethodPing, params, options...)
 }
 
-func (c *Client) Subscribe(ctx context.Context, params *schema.SubscribeRequestParams) (*schema.SubscribeResult, error) {
-	return send[schema.SubscribeRequestParams, schema.SubscribeResult](ctx, c, schema.MethodSubscribe, params)
+func (c *Client) Subscribe(ctx context.Context, params *schema.SubscribeRequestParams, options ...RequestOption) (*schema.SubscribeResult, error) {
+	return send[schema.SubscribeRequestParams, schema.SubscribeResult](ctx, c, schema.MethodSubscribe, params, options...)
 }
 
-func (c *Client) Unsubscribe(ctx context.Context, params *schema.UnsubscribeRequestParams) (*schema.UnsubscribeResult, error) {
-	return send[schema.UnsubscribeRequestParams, schema.UnsubscribeResult](ctx, c, schema.MethodUnsubscribe, params)
+func (c *Client) Unsubscribe(ctx context.Context, params *schema.UnsubscribeRequestParams, options ...RequestOption) (*schema.UnsubscribeResult, error) {
+	return send[schema.UnsubscribeRequestParams, schema.UnsubscribeResult](ctx, c, schema.MethodUnsubscribe, params, options...)
 }
 
 // reconnectAndInitialize attempts to rebuild underlying transport using reconnect callback.
@@ -131,18 +141,18 @@ func (c *Client) reconnectAndInitialize(ctx context.Context) error {
 	return err
 }
 
-func (c *Client) SetLevel(ctx context.Context, params *schema.SetLevelRequestParams) (*schema.SetLevelResult, error) {
-	return send[schema.SetLevelRequestParams, schema.SetLevelResult](ctx, c, schema.MethodLoggingSetLevel, params)
+func (c *Client) SetLevel(ctx context.Context, params *schema.SetLevelRequestParams, options ...RequestOption) (*schema.SetLevelResult, error) {
+	return send[schema.SetLevelRequestParams, schema.SetLevelResult](ctx, c, schema.MethodLoggingSetLevel, params, options...)
 }
 
 // ----- New clientHandler operations (clientHandler side RPC methods) -----
 
-func (c *Client) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, error) {
-	return send[schema.ListRootsRequestParams, schema.ListRootsResult](ctx, c, schema.MethodRootsList, params)
+func (c *Client) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams, options ...RequestOption) (*schema.ListRootsResult, error) {
+	return send[schema.ListRootsRequestParams, schema.ListRootsResult](ctx, c, schema.MethodRootsList, params, options...)
 }
 
-func (c *Client) CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams) (*schema.CreateMessageResult, error) {
-	return send[schema.CreateMessageRequestParams, schema.CreateMessageResult](ctx, c, schema.MethodSamplingCreateMessage, params)
+func (c *Client) CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams, options ...RequestOption) (*schema.CreateMessageResult, error) {
+	return send[schema.CreateMessageRequestParams, schema.CreateMessageResult](ctx, c, schema.MethodSamplingCreateMessage, params, options...)
 }
 
 // Method name constants for experimental features which are not yet defined in mcp-protocol/schema.
@@ -152,8 +162,8 @@ const (
 	methodInteractionCreate = "interaction/create"
 )
 
-func (c *Client) Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, error) {
-	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, methodElicit, params)
+func (c *Client) Elicit(ctx context.Context, params *schema.ElicitRequestParams, options ...RequestOption) (*schema.ElicitResult, error) {
+	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, methodElicit, params, options...)
 }
 
 type versioner interface {
@@ -201,7 +211,7 @@ func WithAuthInterceptor(authorizer *auth.Authorizer) Option {
 	}
 }
 
-func send[P any, R any](ctx context.Context, client *Client, method string, parameters *P) (*R, error) {
+func send[P any, R any](ctx context.Context, client *Client, method string, parameters *P, options ...RequestOption) (*R, error) {
 	if !client.isInitialized() { //ensure initialized
 		return nil, jsonrpc.NewInternalError(errUninitialized.Error(), nil)
 	}
@@ -209,6 +219,15 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 	req, err := jsonrpc.NewRequest(method, parameters)
 	if err != nil {
 		return nil, jsonrpc.NewInvalidRequest(err.Error(), nil)
+	}
+	if ro := NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			req = withAuthMeta(req, ro.StringToken)
+			ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
+		}
 	}
 	// Send initial request
 	response, err := clientTransport.Send(ctx, req)
@@ -219,6 +238,15 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 			if recErr := client.reconnectAndInitialize(ctx); recErr == nil {
 				// Construct fresh request to avoid duplicate id after successful reconnect
 				req, _ = jsonrpc.NewRequest(method, parameters)
+				if ro := NewRequestOptions(options); ro != nil {
+					if ro.RequestId != nil {
+						req.Id = ro.RequestId
+					}
+					if ro.StringToken != "" {
+						req = withAuthMeta(req, ro.StringToken)
+						ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
+					}
+				}
 				response, err = client.transport.Send(ctx, req)
 			} else {
 				// if reconnect failed, propagate original error for visibility
@@ -253,4 +281,37 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 	}
 
 	return &result, nil
+}
+
+// withAuthMeta ensures that request.Params has `_meta.authorization.token` with the provided value.
+func withAuthMeta(req *jsonrpc.Request, token string) *jsonrpc.Request {
+	if token == "" {
+		return req
+	}
+	var params map[string]interface{}
+	if len(req.Params) > 0 && string(req.Params) != "null" {
+		_ = json.Unmarshal(req.Params, &params)
+	}
+	if params == nil {
+		params = map[string]interface{}{}
+	}
+	var meta map[string]interface{}
+	if v, ok := params["_meta"].(map[string]interface{}); ok {
+		meta = v
+	} else {
+		meta = map[string]interface{}{}
+		params["_meta"] = meta
+	}
+	var auth map[string]interface{}
+	if v, ok := meta["authorization"].(map[string]interface{}); ok {
+		auth = v
+	} else {
+		auth = map[string]interface{}{}
+		meta["authorization"] = auth
+	}
+	auth["token"] = token
+	if raw, err := json.Marshal(params); err == nil {
+		req.Params = raw
+	}
+	return req
 }

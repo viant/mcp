@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/gosh"
 	"github.com/viant/gosh/runner/local"
@@ -21,9 +25,6 @@ import (
 	"github.com/viant/mcp/server"
 	"github.com/viant/mcp/server/auth"
 	"github.com/viant/scy/auth/flow"
-	"net/http"
-	"testing"
-	"time"
 )
 
 func TestNew(t *testing.T) {
@@ -70,7 +71,7 @@ func runClient(t *testing.T) error {
 	if !assert.Nil(t, err) {
 		return err
 	}
-	content, rErr := aClient.CallTool(ctx, cmd)
+	content, rErr := aClient.CallTool(ctx, cmd, client.WithJsonRpcRequestId(11))
 	if !assert.Nil(t, rErr) {
 		return jErr
 	}
@@ -111,7 +112,7 @@ func startServer() error {
 		server.WithAuthorizer(authService.Middleware),
 		server.WithProtectedResourcesHandler(authService.ProtectedResourcesHandler),
 		server.WithNewHandler(NewServer),
-		server.WithImplementation(schema.Implementation{"MCP Terminal", "0.1"}),
+		server.WithImplementation(schema.Implementation{Name: "MCP Terminal", Version: "0.1"}),
 	}
 	srv, err := server.New(options...)
 

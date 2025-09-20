@@ -13,13 +13,53 @@ type Adapter struct {
 	handler *Handler
 }
 
+// injectAuthMeta ensures request params carry _meta.authorization.token for server-side auth interceptors.
+func injectAuthMeta(req *jsonrpc.Request, token string) {
+	if token == "" {
+		return
+	}
+	var params map[string]interface{}
+	if len(req.Params) > 0 && string(req.Params) != "null" {
+		_ = json.Unmarshal(req.Params, &params)
+	}
+	if params == nil {
+		params = map[string]interface{}{}
+	}
+	var meta map[string]interface{}
+	if v, ok := params["_meta"].(map[string]interface{}); ok {
+		meta = v
+	} else {
+		meta = map[string]interface{}{}
+		params["_meta"] = meta
+	}
+	var auth map[string]interface{}
+	if v, ok := meta["authorization"].(map[string]interface{}); ok {
+		auth = v
+	} else {
+		auth = map[string]interface{}{}
+		meta["authorization"] = auth
+	}
+	auth["token"] = token
+	if raw, err := json.Marshal(params); err == nil {
+		req.Params = raw
+	}
+}
+
 // ---- New client operations ----
 
 // ListRoots proxies "roots/list" to the underlying handler.
-func (a *Adapter) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams) (*schema.ListRootsResult, error) {
+func (a *Adapter) ListRoots(ctx context.Context, params *schema.ListRootsRequestParams, options ...client.RequestOption) (*schema.ListRootsResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodRootsList, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 	response := &jsonrpc.Response{}
 	a.handler.Serve(ctx, req, response)
@@ -34,10 +74,18 @@ func (a *Adapter) ListRoots(ctx context.Context, params *schema.ListRootsRequest
 }
 
 // CreateMessage proxies "sampling/createMessage" to the underlying handler.
-func (a *Adapter) CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams) (*schema.CreateMessageResult, error) {
+func (a *Adapter) CreateMessage(ctx context.Context, params *schema.CreateMessageRequestParams, options ...client.RequestOption) (*schema.CreateMessageResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodSamplingCreateMessage, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 	response := &jsonrpc.Response{}
 	a.handler.Serve(ctx, req, response)
@@ -57,10 +105,18 @@ const (
 )
 
 // Elicit proxies "elicitation/create" to the underlying handler.
-func (a *Adapter) Elicit(ctx context.Context, params *schema.ElicitRequestParams) (*schema.ElicitResult, error) {
+func (a *Adapter) Elicit(ctx context.Context, params *schema.ElicitRequestParams, options ...client.RequestOption) (*schema.ElicitResult, error) {
 	req, err := jsonrpc.NewRequest(adapterMethodElicit, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 	response := &jsonrpc.Response{}
 	a.handler.Serve(ctx, req, response)
@@ -75,11 +131,19 @@ func (a *Adapter) Elicit(ctx context.Context, params *schema.ElicitRequestParams
 }
 
 // Initialize initializes the client
-func (a *Adapter) Initialize(ctx context.Context) (*schema.InitializeResult, error) {
+func (a *Adapter) Initialize(ctx context.Context, options ...client.RequestOption) (*schema.InitializeResult, error) {
 	params := &schema.InitializeRequestParams{}
 	req, err := jsonrpc.NewRequest(schema.MethodInitialize, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 
 	response := &jsonrpc.Response{}
@@ -102,11 +166,19 @@ func (a *Adapter) Initialize(ctx context.Context) (*schema.InitializeResult, err
 }
 
 // ListResourceTemplates lists resource templates
-func (a *Adapter) ListResourceTemplates(ctx context.Context, cursor *string) (*schema.ListResourceTemplatesResult, error) {
+func (a *Adapter) ListResourceTemplates(ctx context.Context, cursor *string, options ...client.RequestOption) (*schema.ListResourceTemplatesResult, error) {
 	params := &schema.ListResourceTemplatesRequestParams{Cursor: cursor}
 	req, err := jsonrpc.NewRequest(schema.MethodResourcesTemplatesList, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 
 	response := &jsonrpc.Response{}
@@ -126,11 +198,19 @@ func (a *Adapter) ListResourceTemplates(ctx context.Context, cursor *string) (*s
 }
 
 // ListResources lists resources
-func (a *Adapter) ListResources(ctx context.Context, cursor *string) (*schema.ListResourcesResult, error) {
+func (a *Adapter) ListResources(ctx context.Context, cursor *string, options ...client.RequestOption) (*schema.ListResourcesResult, error) {
 	params := &schema.ListResourcesRequestParams{Cursor: cursor}
 	req, err := jsonrpc.NewRequest(schema.MethodResourcesList, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 
 	response := &jsonrpc.Response{}
@@ -150,11 +230,19 @@ func (a *Adapter) ListResources(ctx context.Context, cursor *string) (*schema.Li
 }
 
 // ListPrompts lists prompts
-func (a *Adapter) ListPrompts(ctx context.Context, cursor *string) (*schema.ListPromptsResult, error) {
+func (a *Adapter) ListPrompts(ctx context.Context, cursor *string, options ...client.RequestOption) (*schema.ListPromptsResult, error) {
 	params := &schema.ListPromptsRequestParams{Cursor: cursor}
 	req, err := jsonrpc.NewRequest(schema.MethodPromptsList, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 
 	response := &jsonrpc.Response{}
@@ -174,11 +262,19 @@ func (a *Adapter) ListPrompts(ctx context.Context, cursor *string) (*schema.List
 }
 
 // ListTools lists tools
-func (a *Adapter) ListTools(ctx context.Context, cursor *string) (*schema.ListToolsResult, error) {
+func (a *Adapter) ListTools(ctx context.Context, cursor *string, options ...client.RequestOption) (*schema.ListToolsResult, error) {
 	params := &schema.ListToolsRequestParams{Cursor: cursor}
 	req, err := jsonrpc.NewRequest(schema.MethodToolsList, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 
 	response := &jsonrpc.Response{}
@@ -198,10 +294,18 @@ func (a *Adapter) ListTools(ctx context.Context, cursor *string) (*schema.ListTo
 }
 
 // ReadResource reads a resource
-func (a *Adapter) ReadResource(ctx context.Context, params *schema.ReadResourceRequestParams) (*schema.ReadResourceResult, error) {
+func (a *Adapter) ReadResource(ctx context.Context, params *schema.ReadResourceRequestParams, options ...client.RequestOption) (*schema.ReadResourceResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodResourcesRead, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil {
+		if ro.RequestId != nil {
+			req.Id = ro.RequestId
+		}
+		if ro.StringToken != "" {
+			injectAuthMeta(req, ro.StringToken)
+		}
 	}
 
 	response := &jsonrpc.Response{}
@@ -221,10 +325,13 @@ func (a *Adapter) ReadResource(ctx context.Context, params *schema.ReadResourceR
 }
 
 // GetPrompt gets a prompt
-func (a *Adapter) GetPrompt(ctx context.Context, params *schema.GetPromptRequestParams) (*schema.GetPromptResult, error) {
+func (a *Adapter) GetPrompt(ctx context.Context, params *schema.GetPromptRequestParams, options ...client.RequestOption) (*schema.GetPromptResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodPromptsGet, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil && ro.RequestId != nil {
+		req.Id = ro.RequestId
 	}
 
 	response := &jsonrpc.Response{}
@@ -244,10 +351,13 @@ func (a *Adapter) GetPrompt(ctx context.Context, params *schema.GetPromptRequest
 }
 
 // CallTool calls a tool
-func (a *Adapter) CallTool(ctx context.Context, params *schema.CallToolRequestParams) (*schema.CallToolResult, error) {
+func (a *Adapter) CallTool(ctx context.Context, params *schema.CallToolRequestParams, options ...client.RequestOption) (*schema.CallToolResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodToolsCall, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil && ro.RequestId != nil {
+		req.Id = ro.RequestId
 	}
 
 	response := &jsonrpc.Response{}
@@ -267,10 +377,13 @@ func (a *Adapter) CallTool(ctx context.Context, params *schema.CallToolRequestPa
 }
 
 // Complete completes a request
-func (a *Adapter) Complete(ctx context.Context, params *schema.CompleteRequestParams) (*schema.CompleteResult, error) {
+func (a *Adapter) Complete(ctx context.Context, params *schema.CompleteRequestParams, options ...client.RequestOption) (*schema.CompleteResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodComplete, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil && ro.RequestId != nil {
+		req.Id = ro.RequestId
 	}
 
 	response := &jsonrpc.Response{}
@@ -290,10 +403,13 @@ func (a *Adapter) Complete(ctx context.Context, params *schema.CompleteRequestPa
 }
 
 // Ping pings the handler
-func (a *Adapter) Ping(ctx context.Context, params *schema.PingRequestParams) (*schema.PingResult, error) {
+func (a *Adapter) Ping(ctx context.Context, params *schema.PingRequestParams, options ...client.RequestOption) (*schema.PingResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodPing, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil && ro.RequestId != nil {
+		req.Id = ro.RequestId
 	}
 
 	response := &jsonrpc.Response{}
@@ -313,10 +429,13 @@ func (a *Adapter) Ping(ctx context.Context, params *schema.PingRequestParams) (*
 }
 
 // Subscribe subscribes to a resource
-func (a *Adapter) Subscribe(ctx context.Context, params *schema.SubscribeRequestParams) (*schema.SubscribeResult, error) {
+func (a *Adapter) Subscribe(ctx context.Context, params *schema.SubscribeRequestParams, options ...client.RequestOption) (*schema.SubscribeResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodSubscribe, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil && ro.RequestId != nil {
+		req.Id = ro.RequestId
 	}
 
 	response := &jsonrpc.Response{}
@@ -334,10 +453,13 @@ func (a *Adapter) Subscribe(ctx context.Context, params *schema.SubscribeRequest
 }
 
 // Unsubscribe unsubscribes from a resource
-func (a *Adapter) Unsubscribe(ctx context.Context, params *schema.UnsubscribeRequestParams) (*schema.UnsubscribeResult, error) {
+func (a *Adapter) Unsubscribe(ctx context.Context, params *schema.UnsubscribeRequestParams, options ...client.RequestOption) (*schema.UnsubscribeResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodUnsubscribe, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil && ro.RequestId != nil {
+		req.Id = ro.RequestId
 	}
 
 	response := &jsonrpc.Response{}
@@ -357,10 +479,13 @@ func (a *Adapter) Unsubscribe(ctx context.Context, params *schema.UnsubscribeReq
 }
 
 // SetLevel sets the logging level
-func (a *Adapter) SetLevel(ctx context.Context, params *schema.SetLevelRequestParams) (*schema.SetLevelResult, error) {
+func (a *Adapter) SetLevel(ctx context.Context, params *schema.SetLevelRequestParams, options ...client.RequestOption) (*schema.SetLevelResult, error) {
 	req, err := jsonrpc.NewRequest(schema.MethodLoggingSetLevel, params)
 	if err != nil {
 		return nil, err
+	}
+	if ro := client.NewRequestOptions(options); ro != nil && ro.RequestId != nil {
+		req.Id = ro.RequestId
 	}
 
 	response := &jsonrpc.Response{}

@@ -32,8 +32,11 @@ func (r *RoundTripper) Store() store.Store {
 }
 
 func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	// 1) First, send the request un-authenticated.
+	// 1) First, send the request; if ctx carries an explicit token, attach it.
 	probe := clone(req)
+	if token := getAuthToken(req.Context()); token != "" {
+		probe.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := r.transport.RoundTrip(probe)
 	if err != nil {
 		return nil, err

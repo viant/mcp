@@ -2,10 +2,39 @@ package client
 
 import (
 	"context"
+
+	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
 	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
 )
+
+type RequestOptions struct {
+	RequestId   jsonrpc.RequestId
+	StringToken string
+}
+
+func NewRequestOptions(options []RequestOption) *RequestOptions {
+	requestOptions := &RequestOptions{}
+	for _, option := range options {
+		option(requestOptions)
+	}
+	return requestOptions
+}
+
+type RequestOption func(*RequestOptions)
+
+func WithJsonRpcRequestId(requestId jsonrpc.RequestId) RequestOption {
+	return func(options *RequestOptions) {
+		options.RequestId = requestId
+	}
+}
+
+func WithAuthToken(token string) RequestOption {
+	return func(options *RequestOptions) {
+		options.StringToken = token
+	}
+}
 
 // Option represents option
 type Option func(c *Client)

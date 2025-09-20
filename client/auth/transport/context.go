@@ -12,6 +12,7 @@ type (
 
 const (
 	ContextFlowOptionKey contextScopeKey = "authFlowOptions"
+	ContextAuthTokenKey  contextScopeKey = "authToken"
 )
 
 func getAuthFlowOptions(ctx context.Context) []flow.Option {
@@ -29,4 +30,13 @@ func getScope(ctx context.Context) string {
 		return ""
 	}
 	return strings.Join(flow.NewOptions(options).Scopes(), " ")
+}
+
+func getAuthToken(ctx context.Context) string {
+	if v := ctx.Value(ContextAuthTokenKey); v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/viant/gosh"
 	"github.com/viant/jsonrpc"
 	"github.com/viant/mcp-protocol/authorization"
@@ -26,6 +27,7 @@ type CommandOutput struct {
 }
 
 func (t *TerminalTool) Call(ctx context.Context, input *TerminalCommand) (*schema.CallToolResult, *jsonrpc.Error) {
+
 	token := ctx.Value(authorization.TokenKey)
 	if token != nil {
 		fmt.Printf("token: %+v\n", token)

@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+
 	"github.com/viant/jsonrpc"
 	"github.com/viant/mcp-protocol/schema"
 	serverproto "github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp/server"
-	"log"
 )
 
 func Usage_Example() {
@@ -45,7 +46,7 @@ func Usage_Example() {
 
 	srv, err := server.New(
 		server.WithNewHandler(newHandler),
-		server.WithImplementation(schema.Implementation{"default", "1.0"}),
+		server.WithImplementation(schema.Implementation{Name: "default", Version: "1.0"}),
 	)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
