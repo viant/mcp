@@ -22,6 +22,7 @@ import (
 	serverproto "github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp/client"
 	"github.com/viant/mcp/client/auth/mock"
+	authtransport "github.com/viant/mcp/client/auth/transport"
 	"github.com/viant/mcp/example/tool"
 	"github.com/viant/mcp/server"
 	"github.com/viant/mcp/server/auth"
@@ -118,7 +119,8 @@ func startServer() error {
 	}
 
 	opts := []server.Option{
-		server.WithJRPCAuthorizer(authSvc.EnsureAuthorized),
+		server.WithAuthorizer(authSvc.Middleware),
+		server.WithProtectedResourcesHandler(authSvc.ProtectedResourcesHandler),
 		server.WithNewHandler(newHandler),
 		server.WithImplementation(schema.Implementation{Name: "MCP Terminal", Version: "0.1"}),
 	}
@@ -132,7 +134,11 @@ func startServer() error {
 }
 
 func getHttpTransport(ctx context.Context) (*sse.Client, error) {
+	// Use auth RoundTripper so Authorization header can be injected from context per call.
+	rt, _ := authtransport.New()
+	httpClient := &http.Client{Transport: rt}
 	return sse.New(ctx, fmt.Sprintf("http://localhost:%d/sse", perCallServerPort),
+		sse.WithMessageHttpClient(httpClient),
 		sse.WithListener(func(m *jsonrpc.Message) {
 			// optional debug: b, _ := json.Marshal(m); fmt.Println(string(b))
 		}),

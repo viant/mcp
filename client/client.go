@@ -8,6 +8,7 @@ import (
 
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
+	stdiotransport "github.com/viant/jsonrpc/transport/client/stdio"
 	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/client/auth"
@@ -50,7 +51,10 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 			req.Id = ro.RequestId
 		}
 		if ro.StringToken != "" {
-			req = withAuthMeta(req, ro.StringToken)
+			// For stdio transport, inject _meta; for HTTP transports, use Bearer header only.
+			if isStdio(c.transport) {
+				req = withAuthMeta(req, ro.StringToken)
+			}
 			ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
 		}
 	}
@@ -225,7 +229,9 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 			req.Id = ro.RequestId
 		}
 		if ro.StringToken != "" {
-			req = withAuthMeta(req, ro.StringToken)
+			if isStdio(client.transport) {
+				req = withAuthMeta(req, ro.StringToken)
+			}
 			ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
 		}
 	}
@@ -243,7 +249,9 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 						req.Id = ro.RequestId
 					}
 					if ro.StringToken != "" {
-						req = withAuthMeta(req, ro.StringToken)
+						if isStdio(client.transport) {
+							req = withAuthMeta(req, ro.StringToken)
+						}
 						ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
 					}
 				}
@@ -314,4 +322,15 @@ func withAuthMeta(req *jsonrpc.Request, token string) *jsonrpc.Request {
 		req.Params = raw
 	}
 	return req
+}
+
+// isStdio reports whether the transport is stdio-based (no HTTP layer).
+func isStdio(t transport.Transport) bool {
+	if t == nil {
+		return false
+	}
+	if _, ok := t.(*stdiotransport.Client); ok {
+		return true
+	}
+	return false
 }
