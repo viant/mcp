@@ -142,6 +142,7 @@ func main() {
 ### Further Reading
 
 - **Server Implementation Guide**: [docs/implementer.md](docs/implementer.md)
+- **Server Guide (Tools, Resources, Prompts)**: [docs/server_guide.md](docs/server_guide.md)
 - **Authentication Guide**: [docs/authentication.md](docs/authentication.md)
 - **Bridge (local proxy) Guide**: [docs/bridge.md](docs/bridge.md)
  
