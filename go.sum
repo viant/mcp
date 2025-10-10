@@ -894,6 +894,8 @@ github.com/viant/mcp-protocol v0.5.5 h1:27lo4GEst8Cy1RqU5qhcPscQKGc7r+/7iLEn6MVe
 github.com/viant/mcp-protocol v0.5.5/go.mod h1:EJPomVw6jnI+4Aa2ONYC3WTvApiF0YeQIiaaEpA54ec=
 github.com/viant/mcp-protocol v0.5.6 h1:CsiCt3tq84Es0cWxHIVVHTI81tXuUfh7X5yMLFY2q0s=
 github.com/viant/mcp-protocol v0.5.6/go.mod h1:EJPomVw6jnI+4Aa2ONYC3WTvApiF0YeQIiaaEpA54ec=
+github.com/viant/mcp-protocol v0.5.8 h1:s62Lm24AR2ebBsg5Ekhu3R8p2D5xAXG0qCs5m7m6Jok=
+github.com/viant/mcp-protocol v0.5.8/go.mod h1:EJPomVw6jnI+4Aa2ONYC3WTvApiF0YeQIiaaEpA54ec=
 github.com/viant/scy v0.24.0 h1:KAC3IUARkQxTNSuwBK2YhVBJMOOLN30YaLKHbbuSkMU=
 github.com/viant/scy v0.24.0/go.mod h1:7uNRS67X45YN+JqTLCcMEhehffVjqrejULEDln9p0Ao=
 github.com/viant/toolbox v0.34.5/go.mod h1:OxMCG57V0PXuIP2HNQrtJf2CjqdmbrOx5EkMILuUhzM=
