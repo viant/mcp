@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/gosh"
 	"github.com/viant/gosh/runner/local"
@@ -17,6 +18,10 @@ import (
 
 	"github.com/viant/mcp-protocol/schema"
 
+	"net/http"
+	"testing"
+	"time"
+
 	"github.com/viant/mcp/client"
 	clientauth "github.com/viant/mcp/client/auth"
 	"github.com/viant/mcp/client/auth/mock"
@@ -24,9 +29,6 @@ import (
 	"github.com/viant/mcp/client/auth/transport"
 	"github.com/viant/mcp/server"
 	"github.com/viant/scy/auth/flow"
-	"net/http"
-	"testing"
-	"time"
 )
 
 func TestNew(t *testing.T) {
@@ -124,7 +126,7 @@ func startServer() error {
 	var options = []server.Option{
 		server.WithJRPCAuthorizer(authService.EnsureAuthorized),
 		server.WithNewHandler(NewServer),
-		server.WithImplementation(schema.Implementation{"MCP Terminal", "0.1"}),
+		server.WithImplementation(schema.Implementation{Name: "MCP Terminal", Version: "0.1"}),
 	}
 	srv, err := server.New(options...)
 	if err != nil {
