@@ -7,4 +7,9 @@ type Options struct {
 	BackendForFrontendHeader string `short:"h" long:"backend-for-frontend-header" description:"backend for frontend header"`
 	OAuth2ConfigURL          string `short:"c" long:"config" description:"oauth2 config file"`
 	EncryptionKey            string `short:"k" long:"key" description:"encryption key"`
+
+	// Built-in web elicitator to handle elicitation when downstream client lacks support.
+	ElicitatorEnabled     bool   `long:"elicit" description:"enable built-in web elicitator when client lacks elicitation"`
+	ElicitatorListenAddr  string `long:"elicit-listen" description:"elicitator listen address" default:"127.0.0.1:0"`
+	ElicitatorOpenBrowser bool   `long:"elicit-open" description:"attempt to open browser for elicitation"`
 }

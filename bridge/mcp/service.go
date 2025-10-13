@@ -11,6 +11,7 @@ import (
 	"github.com/viant/scy/auth/authorizer"
 	"github.com/viant/scy/auth/flow"
 	"net/http"
+	"sync"
 
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
@@ -26,8 +27,52 @@ import (
 	protoserver "github.com/viant/mcp-protocol/server"
 )
 
+// opsHandler adapts protoClient.Operations to proto client.Handler by forwarding notifications.
+type opsHandler struct {
+	protoClient.Operations
+}
+
+func (h *opsHandler) OnNotification(ctx context.Context, notification *jsonrpc.Notification) {
+	_ = h.Notify(ctx, notification)
+}
+
+// dynamicHandler allows swapping the underlying handler at runtime.
+type dynamicHandler struct {
+	mu    sync.RWMutex
+	inner transport.Handler
+}
+
+func (d *dynamicHandler) SetInner(h transport.Handler) {
+	d.mu.Lock()
+	d.inner = h
+	d.mu.Unlock()
+}
+
+func (d *dynamicHandler) Serve(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) {
+	d.mu.RLock()
+	h := d.inner
+	d.mu.RUnlock()
+	if h == nil {
+		response.Error = jsonrpc.NewMethodNotFound("handler not ready", request.Params)
+		return
+	}
+	h.Serve(ctx, request, response)
+}
+
+func (d *dynamicHandler) OnNotification(ctx context.Context, notification *jsonrpc.Notification) {
+	d.mu.RLock()
+	h := d.inner
+	d.mu.RUnlock()
+	if h != nil {
+		h.OnNotification(ctx, notification)
+	}
+}
+
 type Service struct {
 	sseClient *sse.Client
+	// remoteHandler forwards upstream server->client RPCs to the current downstream client connection.
+	remoteHandler *dynamicHandler
+	elicitator    *Elicitator
 }
 
 // clientImplementer proxies MCP server requests to the client endpoint.
@@ -35,13 +80,22 @@ type clientImplementer struct {
 	endpoint  client.Interface
 	sseClient *sse.Client
 	protocol  string
+	// clientOps represents downstream client Operations (backchannel)
+	clientOps protoClient.Operations
+	// clientHandler adapts Operations to pclient.Handler for inbound upstream requests
+	clientHandler protoClient.Handler
 }
 
 // Initialize proxies the initialize request to the client endpoint.
 func (ci *clientImplementer) Initialize(ctx context.Context, init *schema.InitializeRequestParams, result *schema.InitializeResult) {
+	// Populate downstream client capabilities for upstream awareness
+	if ci.clientOps != nil {
+		ci.clientOps.Init(ctx, &init.Capabilities)
+	}
 	ci.endpoint = client.New("proxy", "0.1", ci.sseClient,
 		client.WithProtocolVersion(init.ProtocolVersion),
-		client.WithCapabilities(schema.ClientCapabilities{Experimental: make(schema.ClientCapabilitiesExperimental)}))
+		client.WithClientHandler(ci.clientHandler),
+		client.WithCapabilities(schema.ClientCapabilities{Experimental: map[string]map[string]interface{}{}}))
 	res, err := ci.endpoint.Initialize(ctx)
 	if err != nil {
 		return
@@ -51,8 +105,8 @@ func (ci *clientImplementer) Initialize(ctx context.Context, init *schema.Initia
 }
 
 // ListResources proxies the resources/list request.
-func (ci *clientImplementer) ListResources(ctx context.Context, request *schema.ListResourcesRequest) (*schema.ListResourcesResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.ListResources(ctx, request.Params.Cursor)
+func (ci *clientImplementer) ListResources(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListResourcesRequest]) (*schema.ListResourcesResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.ListResources(ctx, request.Request.Params.Cursor)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -60,8 +114,8 @@ func (ci *clientImplementer) ListResources(ctx context.Context, request *schema.
 }
 
 // ListResourceTemplates proxies the resources/templates/list request.
-func (ci *clientImplementer) ListResourceTemplates(ctx context.Context, request *schema.ListResourceTemplatesRequest) (*schema.ListResourceTemplatesResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.ListResourceTemplates(ctx, request.Params.Cursor)
+func (ci *clientImplementer) ListResourceTemplates(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListResourceTemplatesRequest]) (*schema.ListResourceTemplatesResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.ListResourceTemplates(ctx, request.Request.Params.Cursor)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -69,8 +123,8 @@ func (ci *clientImplementer) ListResourceTemplates(ctx context.Context, request 
 }
 
 // ReadResource proxies the resources/read request.
-func (ci *clientImplementer) ReadResource(ctx context.Context, request *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.ReadResource(ctx, &request.Params)
+func (ci *clientImplementer) ReadResource(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ReadResourceRequest]) (*schema.ReadResourceResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.ReadResource(ctx, &request.Request.Params)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -78,8 +132,8 @@ func (ci *clientImplementer) ReadResource(ctx context.Context, request *schema.R
 }
 
 // Subscribe proxies the resources/subscribe request.
-func (ci *clientImplementer) Subscribe(ctx context.Context, request *schema.SubscribeRequest) (*schema.SubscribeResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.Subscribe(ctx, &request.Params)
+func (ci *clientImplementer) Subscribe(ctx context.Context, request *jsonrpc.TypedRequest[*schema.SubscribeRequest]) (*schema.SubscribeResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.Subscribe(ctx, &request.Request.Params)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -87,8 +141,8 @@ func (ci *clientImplementer) Subscribe(ctx context.Context, request *schema.Subs
 }
 
 // Unsubscribe proxies the resources/unsubscribe request.
-func (ci *clientImplementer) Unsubscribe(ctx context.Context, request *schema.UnsubscribeRequest) (*schema.UnsubscribeResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.Unsubscribe(ctx, &request.Params)
+func (ci *clientImplementer) Unsubscribe(ctx context.Context, request *jsonrpc.TypedRequest[*schema.UnsubscribeRequest]) (*schema.UnsubscribeResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.Unsubscribe(ctx, &request.Request.Params)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -96,8 +150,8 @@ func (ci *clientImplementer) Unsubscribe(ctx context.Context, request *schema.Un
 }
 
 // ListPrompts proxies the prompts/list request.
-func (ci *clientImplementer) ListPrompts(ctx context.Context, request *schema.ListPromptsRequest) (*schema.ListPromptsResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.ListPrompts(ctx, request.Params.Cursor)
+func (ci *clientImplementer) ListPrompts(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListPromptsRequest]) (*schema.ListPromptsResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.ListPrompts(ctx, request.Request.Params.Cursor)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -105,8 +159,8 @@ func (ci *clientImplementer) ListPrompts(ctx context.Context, request *schema.Li
 }
 
 // GetPrompt proxies the prompts/get request.
-func (ci *clientImplementer) GetPrompt(ctx context.Context, request *schema.GetPromptRequest) (*schema.GetPromptResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.GetPrompt(ctx, &request.Params)
+func (ci *clientImplementer) GetPrompt(ctx context.Context, request *jsonrpc.TypedRequest[*schema.GetPromptRequest]) (*schema.GetPromptResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.GetPrompt(ctx, &request.Request.Params)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -114,8 +168,8 @@ func (ci *clientImplementer) GetPrompt(ctx context.Context, request *schema.GetP
 }
 
 // ListTools proxies the tools/list request.
-func (ci *clientImplementer) ListTools(ctx context.Context, request *schema.ListToolsRequest) (*schema.ListToolsResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.ListTools(ctx, request.Params.Cursor)
+func (ci *clientImplementer) ListTools(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListToolsRequest]) (*schema.ListToolsResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.ListTools(ctx, request.Request.Params.Cursor)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -123,8 +177,8 @@ func (ci *clientImplementer) ListTools(ctx context.Context, request *schema.List
 }
 
 // CallTool proxies the tools/call request.
-func (ci *clientImplementer) CallTool(ctx context.Context, request *schema.CallToolRequest) (*schema.CallToolResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.CallTool(ctx, &request.Params)
+func (ci *clientImplementer) CallTool(ctx context.Context, request *jsonrpc.TypedRequest[*schema.CallToolRequest]) (*schema.CallToolResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.CallTool(ctx, &request.Request.Params)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -132,8 +186,8 @@ func (ci *clientImplementer) CallTool(ctx context.Context, request *schema.CallT
 }
 
 // Complete proxies the complete request.
-func (ci *clientImplementer) Complete(ctx context.Context, request *schema.CompleteRequest) (*schema.CompleteResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.Complete(ctx, &request.Params)
+func (ci *clientImplementer) Complete(ctx context.Context, request *jsonrpc.TypedRequest[*schema.CompleteRequest]) (*schema.CompleteResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.Complete(ctx, &request.Request.Params)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -141,8 +195,8 @@ func (ci *clientImplementer) Complete(ctx context.Context, request *schema.Compl
 }
 
 // SetLevel proxies the logging/setLevel request.
-func (ci *clientImplementer) SetLevel(ctx context.Context, request *schema.SetLevelRequest) (*schema.SetLevelResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.SetLevel(ctx, &request.Params)
+func (ci *clientImplementer) SetLevel(ctx context.Context, request *jsonrpc.TypedRequest[*schema.SetLevelRequest]) (*schema.SetLevelResult, *jsonrpc.Error) {
+	res, err := ci.endpoint.SetLevel(ctx, &request.Request.Params)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -179,10 +233,12 @@ func (ci *clientImplementer) Implements(method string) bool {
 func New(ctx context.Context, cfg *Options) (*Service, error) {
 
 	var err error
+	dh := &dynamicHandler{}
 	var sseOptions = []sse.Option{
 		//sse.WithListener(func(message *jsonrpc.Message) {
 		//.. debug messages
 		//}),
+		sse.WithHandler(dh),
 	}
 
 	if cfg.OAuth2ConfigURL != "" {
@@ -214,8 +270,11 @@ func New(ctx context.Context, cfg *Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	return &Service{sseClient: aTransport}, nil
+	var el *Elicitator
+	if cfg.ElicitatorEnabled {
+		el = NewElicitator(cfg.ElicitatorListenAddr, cfg.ElicitatorOpenBrowser)
+	}
+	return &Service{sseClient: aTransport, remoteHandler: dh, elicitator: el}, nil
 }
 
 func getOAuthOptions(ctx context.Context, cfg *Options) ([]sse.Option, error) {
@@ -251,8 +310,14 @@ func getOAuthOptions(ctx context.Context, cfg *Options) ([]sse.Option, error) {
 // HTTP starts an HTTP/SSE server on the given address that proxies MCP JSON-RPC calls to the client endpoint.
 func (s *Service) HTTP(ctx context.Context, addr string) (*http.Server, error) {
 	// build a NewServer that forwards requests to the client.Interface
-	NewServer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, _ protoClient.Operations) (protoserver.Handler, error) {
-		impl := &clientImplementer{sseClient: s.sseClient}
+	NewServer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, clientOps protoClient.Operations) (protoserver.Handler, error) {
+		var wrapped protoClient.Operations = clientOps
+		if s.elicitator != nil {
+			wrapped = &opsAugmented{Operations: clientOps, el: s.elicitator}
+		}
+		handler := &opsHandler{Operations: wrapped}
+		s.remoteHandler.SetInner(client.NewHandler(handler))
+		impl := &clientImplementer{sseClient: s.sseClient, clientOps: wrapped, clientHandler: handler}
 		return impl, nil
 	}
 	// create a server with our proxy implementer
@@ -267,8 +332,14 @@ func (s *Service) HTTP(ctx context.Context, addr string) (*http.Server, error) {
 
 // Stdio starts a JSON-RPC server over standard input/output that proxies MCP calls to the client endpoint.
 func (s *Service) Stdio(ctx context.Context) (*stdiosrv.Server, error) {
-	NewServer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, _ protoClient.Operations) (protoserver.Handler, error) {
-		impl := &clientImplementer{sseClient: s.sseClient}
+	NewServer := func(ctx context.Context, notifier transport.Notifier, logger protologger.Logger, clientOps protoClient.Operations) (protoserver.Handler, error) {
+		var wrapped protoClient.Operations = clientOps
+		if s.elicitator != nil {
+			wrapped = &opsAugmented{Operations: clientOps, el: s.elicitator}
+		}
+		handler := &opsHandler{Operations: wrapped}
+		s.remoteHandler.SetInner(client.NewHandler(handler))
+		impl := &clientImplementer{sseClient: s.sseClient, clientOps: wrapped, clientHandler: handler}
 		return impl, nil
 	}
 	srv, err := mcpserver.New(

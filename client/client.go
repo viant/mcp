@@ -162,11 +162,12 @@ func (c *Client) CreateMessage(ctx context.Context, params *schema.CreateMessage
 // Method name constants for experimental features which are not yet defined in mcp-protocol/schema.
 // They are declared here to avoid compile-time dependency mismatch and will be removed once promoted upstream.
 const (
-	methodElicit            = "elicitation/create"
-	methodInteractionCreate = "interaction/create"
+	methodElicit = "elicitation/create"
 )
 
 func (c *Client) Elicit(ctx context.Context, params *schema.ElicitRequestParams, options ...RequestOption) (*schema.ElicitResult, error) {
+	fmt.Printf("ELiciaTION : calledn")
+
 	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, methodElicit, params, options...)
 }
 
