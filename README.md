@@ -131,6 +131,7 @@ func main() {
     log.Fatalf("Failed to create server: %v", err)
   }
 
+  // Choose one transport (see below). Example: HTTP (SSE by default)
   log.Fatal(srv.HTTP(context.Background(), ":4981").ListenAndServe())
 
 }
@@ -138,6 +139,57 @@ func main() {
 
 
 
+### Starting the Server
+
+- Stdio (typical for editor integrations):
+
+  ```go
+  stdioSrv := srv.Stdio(context.Background())
+  log.Fatal(stdioSrv.ListenAndServe())
+  ```
+
+- HTTP over SSE (default):
+
+  ```go
+  httpSrv := srv.HTTP(context.Background(), ":4981")
+  log.Fatal(httpSrv.ListenAndServe())
+  ```
+
+- HTTP Streaming (toggle):
+
+  ```go
+  srv.UseStreaming(true)
+  httpSrv := srv.HTTP(context.Background(), ":4981")
+  log.Fatal(httpSrv.ListenAndServe())
+  ```
+
+If you prefer a single configuration object, see `NewServer` in `server.go` which accepts transport options and can enable streaming based on `Transport.Type`.
+
+### Add a Resource
+
+Register a readable resource URI and return its content from your handler.
+
+```go
+h.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
+  func(ctx context.Context, req *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
+    return &schema.ReadResourceResult{Contents: []schema.ReadResourceResultContentsElem{{Text: "Hello, world!", Uri: req.Params.Uri}}}, nil
+  })
+```
+
+To notify clients about updates, emit `resources/updated` via `h.Notifier`.
+
+### Add a Prompt
+
+Expose reusable prompt templates that clients can list and resolve.
+
+```go
+prompt := &schema.Prompt{Name: "welcome", Arguments: []schema.PromptArgument{{Name: "name", Required: ptr(true)}}}
+h.RegisterPrompts(prompt, func(ctx context.Context, p *schema.GetPromptRequestParams) (*schema.GetPromptResult, *jsonrpc.Error) {
+  return &schema.GetPromptResult{Messages: []schema.PromptMessage{{Role: schema.RoleAssistant, Content: schema.TextContent{Type: "text", Text: "Hello, " + p.Arguments["name"] + "!"}}}}, nil
+})
+```
+
+See the Server Guide for deeper coverage of resources and prompts.
 
 ### Further Reading
 
@@ -145,7 +197,47 @@ func main() {
 - **Server Guide (Tools, Resources, Prompts)**: [docs/server_guide.md](docs/server_guide.md)
 - **Authentication Guide**: [docs/authentication.md](docs/authentication.md)
 - **Bridge (local proxy) Guide**: [docs/bridge.md](docs/bridge.md)
+ - **Client Guide**: [docs/client.md](docs/client.md)
  
+### Creating a Client
+
+You can connect to an MCP server over stdio, HTTP/SSE, or HTTP streaming.
+
+- SSE client (simple):
+
+  ```go
+  ctx := context.Background()
+  sseTransport, _ := sse.New(ctx, "http://localhost:4981/sse")
+  cli := client.New("Demo", "1.0", sseTransport)
+  if _, err := cli.Initialize(ctx); err != nil { log.Fatal(err) }
+  tools, _ := cli.ListTools(ctx, nil)
+  fmt.Println("tools:", len(tools.Tools))
+  ```
+
+- Streaming client:
+
+  ```go
+  ctx := context.Background()
+  streamTransport, _ := streaming.New(ctx, "http://localhost:4981/")
+  cli := client.New("Demo", "1.0", streamTransport)
+  _, _ = cli.Initialize(ctx)
+  ```
+
+- Stdio client (spawn a child process):
+
+  ```go
+  stdioTransport, _ := stdio.New("./your-mcp-server-binary",
+    stdio.WithArguments("--flag1", "value"))
+  cli := client.New("Demo", "1.0", stdioTransport)
+  _, _ = cli.Initialize(context.Background())
+  ```
+
+- OAuth2/OIDC (optional):
+
+  See the Authentication section below for creating an `http.Client` with token handling and passing it to the SSE/streaming transports.
+
+Advanced: If you need automatic reconnect and integrated auth, use the helper `mcp.NewClient(handler, *ClientOptions)` from the root package, which builds the transport and wires an auth interceptor. Supply a `pclient.Handler` implementation if your client needs to support server-initiated calls (roots, sampling, elicitation).
+
 ## Authentication & Authorization Summary
 
 MCP supports transport-agnostic authentication and authorization (HTTP or HTTP-SSE) via OAuth2/OIDC in two modes:
@@ -213,8 +305,7 @@ MCP supports the following Client Side methods:
 - `elicitation/create` - Ask the client to perform an elicitation (model completion) using provided prompts.
 - `interaction/create` - Initiate a user-interaction request, allowing the server to prompt the user via the client UI.
 
-
-can 
+ 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

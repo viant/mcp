@@ -166,8 +166,6 @@ const (
 )
 
 func (c *Client) Elicit(ctx context.Context, params *schema.ElicitRequestParams, options ...RequestOption) (*schema.ElicitResult, error) {
-	fmt.Printf("ELiciaTION : calledn")
-
 	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, methodElicit, params, options...)
 }
 

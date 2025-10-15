@@ -1,4 +1,4 @@
-# Build a Basic MCP Server with Tool Calls (Go)
+# Build a Basic MCP Server (Go)
 
 This guide shows how to spin up a minimal MCP server in Go, register a typed tool, and understand how struct field tags are converted to JSON Schema for tools/list using mcp-protocol schema utilities.
 
@@ -50,14 +50,92 @@ This guide shows how to spin up a minimal MCP server in Go, register a typed too
         )
         if err != nil { log.Fatal(err) }
 
-        // HTTP transport (use stdio for typical MCP runtime integration)
+        // Choose a transport (see sections below)
+        // Example: HTTP (SSE by default)
         log.Fatal(srv.HTTP(context.Background(), ":4981").ListenAndServe())
     }
 
 Notes:
 - proto.WithDefaultHandler provides a registry for tools/resources/prompts and default method handling.
 - proto.RegisterTool[I,O] derives inputSchema and outputSchema from your Go types and wires a typed handler.
-- For stdio transport (common for MCP), use srv.Stdio(ctx, os.Stdin, os.Stdout) from this repo server/stdio.go.
+- For stdio transport (common for MCP), use `srv.Stdio(ctx).ListenAndServe()`.
+
+## Start the Server
+
+You can run the server over stdio, HTTP/SSE, or HTTP streaming.
+
+### Stdio (typical for editor integrations)
+
+    ctx := context.Background()
+    stdioSrv := srv.Stdio(ctx)
+    log.Fatal(stdioSrv.ListenAndServe())
+
+This listens for JSON-RPC messages on stdin/stdout.
+
+### HTTP (SSE)
+
+    ctx := context.Background()
+    httpSrv := srv.HTTP(ctx, ":4981")
+    log.Fatal(httpSrv.ListenAndServe())
+
+By default the HTTP transport uses Server-Sent Events (SSE).
+
+### HTTP (Streaming)
+
+    srv.UseStreaming(true)
+    httpSrv := srv.HTTP(context.Background(), ":4981")
+    log.Fatal(httpSrv.ListenAndServe())
+
+Toggling `UseStreaming(true)` switches the HTTP handler to the streaming transport.
+
+### Reference Projects (packaged examples)
+
+Each example is structured with a `service` package and a `cmd/server` main:
+
+- Tools-only server:
+  - Usecase: `docs/guide/tools_basic/usecase`
+  - Server: `docs/guide/tools_basic/server`
+  - Main: `docs/guide/tools_basic/cmd/server`
+  - Run: `go run ./docs/guide/tools_basic/cmd/server`
+
+- Resources-only server:
+  - Usecase: `docs/guide/resources/usecase`
+  - Server: `docs/guide/resources/server`
+  - Main: `docs/guide/resources/cmd/server`
+  - Run: `go run ./docs/guide/resources/cmd/server`
+
+- Prompts-only server:
+  - Usecase: `docs/guide/prompts/usecase`
+  - Server: `docs/guide/prompts/server`
+  - Main: `docs/guide/prompts/cmd/server`
+  - Run: `go run ./docs/guide/prompts/cmd/server`
+
+- Full server (tools + resources + prompts):
+  - Usecase: `docs/guide/full/usecase`
+  - Server: `docs/guide/full/server`
+  - Main: `docs/guide/full/cmd/server`
+  - Run: `go run ./docs/guide/full/cmd/server`
+
+- Tools (advanced): rich tagging + elicitation
+  - Usecase: `docs/guide/tools_advanced/usecase`
+  - Server: `docs/guide/tools_advanced/server`
+  - Main: `docs/guide/tools_advanced/cmd/server`
+  - Run: `go run ./docs/guide/tools_advanced/cmd/server`
+  - Shows: `choice`, `format:email`, `format:uri`, `description`, `required:true`, `omitempty`, `internal:"true"`, nested objects, arrays, maps, and a second tool that elicits missing fields from the client.
+
+- Tools (sampling): translate via CreateMessage
+  - Usecase: `docs/guide/tools_sampling/usecase`
+  - Server: `docs/guide/tools_sampling/server`
+  - Main: `docs/guide/tools_sampling/cmd/server`
+  - Run: `go run ./docs/guide/tools_sampling/cmd/server`
+  - Shows: server-initiated `sampling/createMessage` via client, using `SystemPrompt` and user message content.
+
+- Auth (HTTP-level): protected tools via OAuth2/OIDC
+  - Usecase: `docs/guide/auth_http/usecase`
+  - Server: `docs/guide/auth_http/server`
+  - Main: `docs/guide/auth_http/cmd/server`
+  - Run: `go run ./docs/guide/auth_http/cmd/server`
+  - Shows: `server.WithProtectedResourcesHandler` and `server.WithAuthorizer` with a `Policy.Global` protected resource. Clients must present `Authorization: Bearer ...`, or use the provided RoundTripper to acquire tokens.
 
 ## Calling Your Tool
 
@@ -69,6 +147,93 @@ From a client using github.com/viant/mcp adapter:
     // res.Content[0].Text contains a JSON string: {"sum":5}
 
 Clients discover the tool and its schemas via tools/list.
+
+## Create a Client
+
+Connect from Go using SSE, streaming, or stdio transports.
+
+### SSE client
+
+    ctx := context.Background()
+    sseTransport, _ := sse.New(ctx, "http://localhost:4981/sse")
+    cli := client.New("Demo", "1.0", sseTransport)
+    if _, err := cli.Initialize(ctx); err != nil { log.Fatal(err) }
+    res, _ := cli.ListResources(ctx, nil)
+    fmt.Println("resources:", len(res.Resources))
+
+### Streaming client
+
+    streamTransport, _ := streaming.New(ctx, "http://localhost:4981/")
+    cli := client.New("Demo", "1.0", streamTransport)
+    _, _ = cli.Initialize(ctx)
+
+### Stdio client (spawned server)
+
+    stdioTransport, _ := stdio.New("./your-mcp-server-binary",
+        stdio.WithArguments("--flag1", "value"))
+    cli := client.New("Demo", "1.0", stdioTransport)
+    _, _ = cli.Initialize(ctx)
+
+### Authenticated HTTP client (optional)
+
+For OAuth2/OIDC-protected servers, create an authenticated `http.Client` and pass it to the transport (see README Authentication section for a full example):
+
+    rt, _ := transport.New(
+        transport.WithStore(myStore),
+        transport.WithAuthFlow(flow.NewBrowserFlow()),
+    )
+    httpClient := &http.Client{Transport: rt}
+    sseTransport, _ := sse.New(ctx, "https://secure.example.com/sse", sse.WithHttpClient(httpClient))
+    cli := client.New("Demo", "1.0", sseTransport)
+    _, _ = cli.Initialize(ctx)
+
+## Add a Resource
+
+Register a readable resource (and optional templates) that clients can list/read/subscribe to.
+
+    // Inside WithDefaultHandler block
+    h.RegisterResource(schema.Resource{
+        Name: "hello",
+        Uri:  "/hello",
+        // MimeType: ptr("text/plain"), // optional
+    }, func(ctx context.Context, req *schema.ReadResourceRequest) (*schema.ReadResourceResult, *jsonrpc.Error) {
+        return &schema.ReadResourceResult{
+            Contents: []schema.ReadResourceResultContentsElem{{
+                Text: "Hello, world!",
+                Uri:  req.Params.Uri,
+            }},
+        }, nil
+    })
+
+Notify subscribers when content changes by sending `resources/updated`:
+
+    notif, _ := jsonrpc.NewNotification(
+        schema.MethodNotificationResourceUpdated,
+        map[string]string{"uri": "/hello"},
+    )
+    _ = h.Notifier.Send(ctx, notif)
+
+## Add a Prompt
+
+Expose reusable prompts that clients can list and resolve with arguments.
+
+    welcome := &schema.Prompt{
+        Name:        "welcome",
+        Description: ptr("Greets a user by name"),
+        Arguments: []schema.PromptArgument{
+            {Name: "name", Required: ptr(true)},
+        },
+    }
+
+    h.RegisterPrompts(welcome, func(ctx context.Context, p *schema.GetPromptRequestParams) (*schema.GetPromptResult, *jsonrpc.Error) {
+        name := p.Arguments["name"]
+        return &schema.GetPromptResult{
+            Messages: []schema.PromptMessage{{
+                Role:    schema.RoleAssistant,
+                Content: schema.TextContent{Type: "text", Text: "Hello, " + name + "!"},
+            }},
+        }, nil
+    })
 
 ## Struct Tags to JSON Schema Mapping
 
@@ -153,10 +318,10 @@ If you need full control, build schemas explicitly and register with RegisterToo
         },
     )
 
-## Transport Options
+## Transport Options (summary)
 
-- HTTP: srv.HTTP(ctx, ":4981").ListenAndServe()
-- Stdio: srv.Stdio(ctx, os.Stdin, os.Stdout) for typical MCP integrations
+- HTTP (SSE): `srv.HTTP(ctx, ":4981").ListenAndServe()`
+- HTTP (Streaming): `srv.UseStreaming(true); srv.HTTP(ctx, ":4981").ListenAndServe()`
+- Stdio: `srv.Stdio(ctx).ListenAndServe()`
 
-That’s it—define typed I/O, register with the default handler, and the server advertises schemas automatically for a smooth tool UX in MCP clients.
-
+That’s it—define typed I/O, register with the default handler, and the server advertises capabilities and schemas automatically for a smooth tool UX in MCP clients.
