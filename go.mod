@@ -8,8 +8,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1
-	github.com/viant/jsonrpc v0.10.0
-	github.com/viant/mcp-protocol v0.5.9
+	github.com/viant/jsonrpc v0.10.2
+	github.com/viant/mcp-protocol v0.5.10
 	github.com/viant/scy v0.24.0
 	golang.org/x/oauth2 v0.30.0
 )
