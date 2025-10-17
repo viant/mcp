@@ -18,6 +18,7 @@ import (
 	authtransport "github.com/viant/mcp/client/auth/transport"
 
 	sse "github.com/viant/jsonrpc/transport/client/http/sse"
+	streamable "github.com/viant/jsonrpc/transport/client/http/streamable"
 
 	stdiosrv "github.com/viant/jsonrpc/transport/server/stdio"
 
@@ -69,7 +70,7 @@ func (d *dynamicHandler) OnNotification(ctx context.Context, notification *jsonr
 }
 
 type Service struct {
-	sseClient *sse.Client
+	downstream transport.Transport
 	// remoteHandler forwards upstream server->client RPCs to the current downstream client connection.
 	remoteHandler *dynamicHandler
 	elicitator    *Elicitator
@@ -77,9 +78,9 @@ type Service struct {
 
 // clientImplementer proxies MCP server requests to the client endpoint.
 type clientImplementer struct {
-	endpoint  client.Interface
-	sseClient *sse.Client
-	protocol  string
+	endpoint   client.Interface
+	downstream transport.Transport
+	protocol   string
 	// clientOps represents downstream client Operations (backchannel)
 	clientOps protoClient.Operations
 	// clientHandler adapts Operations to pclient.Handler for inbound upstream requests
@@ -92,7 +93,7 @@ func (ci *clientImplementer) Initialize(ctx context.Context, init *schema.Initia
 	if ci.clientOps != nil {
 		ci.clientOps.Init(ctx, &init.Capabilities)
 	}
-	ci.endpoint = client.New("proxy", "0.1", ci.sseClient,
+	ci.endpoint = client.New("proxy", "0.1", ci.downstream,
 		client.WithProtocolVersion(init.ProtocolVersion),
 		client.WithClientHandler(ci.clientHandler),
 		client.WithCapabilities(schema.ClientCapabilities{Experimental: map[string]map[string]interface{}{}}))
@@ -234,50 +235,86 @@ func New(ctx context.Context, cfg *Options) (*Service, error) {
 
 	var err error
 	dh := &dynamicHandler{}
-	var sseOptions = []sse.Option{
-		//sse.WithListener(func(message *jsonrpc.Message) {
-		//.. debug messages
-		//}),
-		sse.WithHandler(dh),
-	}
-
+	// Build optional authenticated HTTP client if configured
+	var httpClient *http.Client
 	if cfg.OAuth2ConfigURL != "" {
-		if sseOptions, err = getOAuthOptions(ctx, cfg); err != nil {
+		var err error
+		httpClient, err = buildAuthHTTPClient(ctx, cfg)
+		if err != nil {
 			return nil, err
 		}
 	} else if cfg.BackendForFrontend {
 		authTransportOptions := []authtransport.Option{
 			authtransport.WithBackendForFrontendAuth(),
 			authtransport.WithGlobalResource(&authorization.Authorization{
-				UseIdToken: true,
-				ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
-					AuthorizationServers: []string{},
-				},
+				UseIdToken:                true,
+				ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{AuthorizationServers: []string{}},
 			}),
 		}
 		if cfg.BackendForFrontendHeader != "" {
 			authTransportOptions = append(authTransportOptions, authtransport.WithAuthorizationExchangeHeader(cfg.BackendForFrontendHeader))
 		}
-		roundTripper, err := authtransport.New(authTransportOptions...)
+		rt, err := authtransport.New(authTransportOptions...)
 		if err != nil {
 			return nil, err
 		}
-		sseOptions = append(sseOptions, sse.WithMessageHttpClient(&http.Client{Transport: roundTripper}))
-
+		httpClient = &http.Client{Transport: rt}
 	}
 
-	aTransport, err := sse.New(ctx, cfg.URL, sseOptions...)
-	if err != nil {
-		return nil, err
+	// Autodetect remote transport (Streamable vs SSE)
+	var downstream transport.Transport
+	if isStreamable(ctx, cfg.URL, httpClient) {
+		opts := []streamable.Option{streamable.WithHandler(dh)}
+		if httpClient != nil {
+			opts = append(opts, streamable.WithHTTPClient(httpClient))
+		}
+		downstream, err = streamable.New(ctx, cfg.URL, opts...)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		opts := []sse.Option{sse.WithHandler(dh)}
+		if httpClient != nil {
+			opts = append(opts, sse.WithHttpClient(httpClient), sse.WithMessageHttpClient(httpClient))
+		}
+		downstream, err = sse.New(ctx, cfg.URL, opts...)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var el *Elicitator
 	if cfg.ElicitatorEnabled {
 		el = NewElicitator(cfg.ElicitatorListenAddr, cfg.ElicitatorOpenBrowser)
 	}
-	return &Service{sseClient: aTransport, remoteHandler: dh, elicitator: el}, nil
+	return &Service{downstream: downstream, remoteHandler: dh, elicitator: el}, nil
 }
 
-func getOAuthOptions(ctx context.Context, cfg *Options) ([]sse.Option, error) {
+// isStreamable tests remote URL for Streamable HTTP transport by attempting a POST initialize handshake.
+func isStreamable(ctx context.Context, endpoint string, httpClient *http.Client) bool {
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
+	payload := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"mcp-bridge","version":"1"},"capabilities":{},"protocolVersion":"2025-06-18"}}`)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", "2025-06-18")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return true
+	}
+	// Legacy servers often return 404/405 for POST at SSE URL
+	return false
+}
+
+func buildAuthHTTPClient(ctx context.Context, cfg *Options) (*http.Client, error) {
 	if cfg.EncryptionKey != "" {
 		cfg.OAuth2ConfigURL += "|" + cfg.EncryptionKey
 	}
@@ -304,7 +341,7 @@ func getOAuthOptions(ctx context.Context, cfg *Options) ([]sse.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append([]sse.Option{}, sse.WithMessageHttpClient(&http.Client{Transport: roundTripper})), nil
+	return &http.Client{Transport: roundTripper}, nil
 }
 
 // HTTP starts an HTTP/SSE server on the given address that proxies MCP JSON-RPC calls to the client endpoint.
@@ -317,7 +354,7 @@ func (s *Service) HTTP(ctx context.Context, addr string) (*http.Server, error) {
 		}
 		handler := &opsHandler{Operations: wrapped}
 		s.remoteHandler.SetInner(client.NewHandler(handler))
-		impl := &clientImplementer{sseClient: s.sseClient, clientOps: wrapped, clientHandler: handler}
+		impl := &clientImplementer{downstream: s.downstream, clientOps: wrapped, clientHandler: handler}
 		return impl, nil
 	}
 	// create a server with our proxy implementer
@@ -339,7 +376,7 @@ func (s *Service) Stdio(ctx context.Context) (*stdiosrv.Server, error) {
 		}
 		handler := &opsHandler{Operations: wrapped}
 		s.remoteHandler.SetInner(client.NewHandler(handler))
-		impl := &clientImplementer{sseClient: s.sseClient, clientOps: wrapped, clientHandler: handler}
+		impl := &clientImplementer{downstream: s.downstream, clientOps: wrapped, clientHandler: handler}
 		return impl, nil
 	}
 	srv, err := mcpserver.New(

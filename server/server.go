@@ -22,6 +22,7 @@ type Server struct {
 	loggerName                string
 	protectedResourcesHandler http.HandlerFunc
 	corsHandler               func(next http.Handler) http.Handler
+	corsConfig                *Cors
 	authorizer                func(next http.Handler) http.Handler
 	jRPCAuthorizer            auth.JRPCAuthorizer
 	stdioServer
@@ -64,7 +65,8 @@ func (s *Server) AsClient(ctx context.Context) client.Interface {
 
 // New creates a new Server instance
 func New(options ...Option) (*Server, error) {
-	corsHandler := &corsHandler{defaultCors()}
+	dCors := defaultCors()
+	corsHandler := &corsHandler{dCors}
 	// initialize handler
 	s := &Server{
 		info: schema.Implementation{
@@ -75,6 +77,7 @@ func New(options ...Option) (*Server, error) {
 		protocolVersion: schema.LatestProtocolVersion,
 		activeContexts:  syncmap.NewMap[int, *activeContext](),
 		corsHandler:     corsHandler.Middleware,
+		corsConfig:      dCors,
 	}
 	for _, option := range options {
 		if err := option(s); err != nil {

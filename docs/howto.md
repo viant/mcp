@@ -62,7 +62,7 @@ Notes:
 
 ## Start the Server
 
-You can run the server over stdio, HTTP/SSE, or HTTP streaming.
+You can run the server over stdio, HTTP/SSE, or HTTP streamable.
 
 ### Stdio (typical for editor integrations)
 
@@ -80,13 +80,35 @@ This listens for JSON-RPC messages on stdin/stdout.
 
 By default the HTTP transport uses Server-Sent Events (SSE).
 
-### HTTP (Streaming)
+### HTTP (Streamable)
 
-    srv.UseStreaming(true)
+    srv.UseStreamableHTTP(true)
     httpSrv := srv.HTTP(context.Background(), ":4981")
     log.Fatal(httpSrv.ListenAndServe())
 
-Toggling `UseStreaming(true)` switches the HTTP handler to the streaming transport.
+Toggling `UseStreamableHTTP(true)` switches the HTTP handler to the streamable HTTP transport.
+
+#### Endpoints and Routing
+
+- Both transports are mounted by default:
+  - SSE: `GET /sse` and `POST /message`
+  - Streamable HTTP: `POST/GET /mcp`
+- Root redirect can be enabled so `"/"` forwards to the active transport:
+  - `WithRootRedirect(true)`
+- To customize endpoints:
+  - `WithStreamableURI("/api/mcp")`
+  - `WithSSEURI("/api/sse")`
+  - `WithSSEMessageURI("/api/rpc")`
+
+```go
+srv, _ := mcp.New(
+  mcp.WithNewHandler(newHandler),
+  mcp.WithStreamableURI("/api/mcp"),
+  mcp.WithSSEURI("/api/sse"),
+  mcp.WithSSEMessageURI("/api/rpc"),
+  mcp.WithRootRedirect(true),
+)
+```
 
 ### Reference Projects (packaged examples)
 
@@ -163,7 +185,7 @@ Connect from Go using SSE, streaming, or stdio transports.
 
 ### Streaming client
 
-    streamTransport, _ := streaming.New(ctx, "http://localhost:4981/")
+    streamTransport, _ := streamable.New(ctx, "http://localhost:4981/")
     cli := client.New("Demo", "1.0", streamTransport)
     _, _ = cli.Initialize(ctx)
 
@@ -321,7 +343,7 @@ If you need full control, build schemas explicitly and register with RegisterToo
 ## Transport Options (summary)
 
 - HTTP (SSE): `srv.HTTP(ctx, ":4981").ListenAndServe()`
-- HTTP (Streaming): `srv.UseStreaming(true); srv.HTTP(ctx, ":4981").ListenAndServe()`
+- HTTP (Streamable): `srv.UseStreamableHTTP(true); srv.HTTP(ctx, ":4981").ListenAndServe()`
 - Stdio: `srv.Stdio(ctx).ListenAndServe()`
 
 That’s it—define typed I/O, register with the default handler, and the server advertises capabilities and schemas automatically for a smooth tool UX in MCP clients.

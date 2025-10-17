@@ -155,15 +155,42 @@ func main() {
   log.Fatal(httpSrv.ListenAndServe())
   ```
 
-- HTTP Streaming (toggle):
+- HTTP Streamable (toggle):
 
   ```go
-  srv.UseStreaming(true)
+  srv.UseStreamableHTTP(true)
   httpSrv := srv.HTTP(context.Background(), ":4981")
   log.Fatal(httpSrv.ListenAndServe())
   ```
 
-If you prefer a single configuration object, see `NewServer` in `server.go` which accepts transport options and can enable streaming based on `Transport.Type`.
+If you prefer a single configuration object, see `NewServer` in `server.go` which accepts transport options and can enable Streamable HTTP based on `Transport.Type`.
+
+#### Endpoints and Routing
+
+- By default, both transports are mounted:
+  - SSE: `GET /sse` and `POST /message`
+  - Streamable HTTP: `POST/GET /mcp`
+- You can enable root redirect so `"/"` forwards to the active transport base:
+  - `WithRootRedirect(true)`
+- You can also customize the endpoint paths:
+  - `WithStreamableURI("/api/mcp")`
+  - `WithSSEURI("/api/sse")`
+  - `WithSSEMessageURI("/api/rpc")`
+
+Example:
+
+```go
+srv, _ := mcp.New(
+  mcp.WithNewHandler(newHandler),
+  mcp.WithStreamableURI("/api/mcp"),
+  mcp.WithSSEURI("/api/sse"),
+  mcp.WithSSEMessageURI("/api/rpc"),
+  mcp.WithRootRedirect(true), // redirects "/" to /api/mcp if UseStreamableHTTP(true), else /api/sse
+)
+srv.UseStreamableHTTP(true)
+httpSrv := srv.HTTP(context.Background(), ":4981")
+log.Fatal(httpSrv.ListenAndServe())
+```
 
 ### Add a Resource
 
@@ -201,7 +228,7 @@ See the Server Guide for deeper coverage of resources and prompts.
  
 ### Creating a Client
 
-You can connect to an MCP server over stdio, HTTP/SSE, or HTTP streaming.
+You can connect to an MCP server over stdio, HTTP/SSE, or HTTP streamable.
 
 - SSE client (simple):
 
@@ -218,7 +245,7 @@ You can connect to an MCP server over stdio, HTTP/SSE, or HTTP streaming.
 
   ```go
   ctx := context.Background()
-  streamTransport, _ := streaming.New(ctx, "http://localhost:4981/")
+  streamTransport, _ := streamable.New(ctx, "http://localhost:4981/")
   cli := client.New("Demo", "1.0", streamTransport)
   _, _ = cli.Initialize(ctx)
   ```

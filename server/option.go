@@ -15,6 +15,7 @@ func WithCORS(cors *Cors) Option {
 	return func(s *Server) error {
 		handler := &corsHandler{Cors: cors}
 		s.corsHandler = handler.Middleware
+		s.corsConfig = cors
 		return nil
 	}
 }
@@ -22,6 +23,38 @@ func WithCORS(cors *Cors) Option {
 func WithProtectedResourcesHandler(handler http.HandlerFunc) Option {
 	return func(s *Server) error {
 		s.protectedResourcesHandler = handler
+		return nil
+	}
+}
+
+// WithStreamableURI sets the base URI for the streamable HTTP endpoint (default "/mcp").
+func WithStreamableURI(uri string) Option {
+	return func(s *Server) error {
+		s.streamableURI = uri
+		return nil
+	}
+}
+
+// WithSSEURI sets the base URI for the SSE endpoint (default "/sse").
+func WithSSEURI(uri string) Option {
+	return func(s *Server) error {
+		s.sseURI = uri
+		return nil
+	}
+}
+
+// WithSSEMessageURI sets the message POST URI for SSE transport (default "/message").
+func WithSSEMessageURI(uri string) Option {
+	return func(s *Server) error {
+		s.sseMessageURI = uri
+		return nil
+	}
+}
+
+// WithRootRedirect enables redirect from "/" to the active transport base URI.
+func WithRootRedirect(enable bool) Option {
+	return func(s *Server) error {
+		s.rootRedirect = enable
 		return nil
 	}
 }

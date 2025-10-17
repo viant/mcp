@@ -145,7 +145,7 @@ func NewServer(newHandler protoserver.NewHandler, options *ServerOptions) (*serv
 	}
 	// apply streaming flag
 	if useStreaming {
-		srv.UseStreaming(true)
+		srv.UseStreamableHTTP(true)
 	}
 
 	return srv, nil

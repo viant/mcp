@@ -7,7 +7,7 @@ import (
 
 	"github.com/viant/jsonrpc/transport"
 	"github.com/viant/jsonrpc/transport/client/http/sse"
-	"github.com/viant/jsonrpc/transport/client/http/streaming"
+	"github.com/viant/jsonrpc/transport/client/http/streamable"
 
 	"github.com/viant/jsonrpc/transport/client/stdio"
 
@@ -160,12 +160,12 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 	case "streaming":
 		httpOptions := c.Transport.ClientTransportHTTP
 
-		opts := []streaming.Option{}
+		opts := []streamable.Option{}
 		if httpClient != nil {
-			opts = append(opts, streaming.WithHTTPClient(httpClient))
+			opts = append(opts, streamable.WithHTTPClient(httpClient))
 		}
-		opts = append(opts, streaming.WithHandler(clientHandler))
-		ret, err := streaming.New(ctx, httpOptions.URL, opts...)
+		opts = append(opts, streamable.WithHandler(clientHandler))
+		ret, err := streamable.New(ctx, httpOptions.URL, opts...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create streaming transport: %w", err)
 		}

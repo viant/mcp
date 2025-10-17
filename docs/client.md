@@ -32,14 +32,14 @@ func main() {
 }
 ```
 
-### HTTP Streaming
+### HTTP Streamable
 
 ```go
 import (
-    streaming "github.com/viant/jsonrpc/transport/client/http/streaming"
+    streamable "github.com/viant/jsonrpc/transport/client/http/streamable"
 )
 
-transport, _ := streaming.New(ctx, "http://localhost:4981/")
+transport, _ := streamable.New(ctx, "http://localhost:4981/")
 cli := mcpclient.New("Demo", "1.0", transport)
 _, _ = cli.Initialize(ctx)
 ```
