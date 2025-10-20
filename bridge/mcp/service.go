@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"sync"
 
+	"bytes"
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
 	authtransport "github.com/viant/mcp/client/auth/transport"
