@@ -1,6 +1,6 @@
 # MCP Client Guide (Go)
 
-This guide shows how to create an MCP client in Go, connect via different transports (SSE, streaming, stdio), optionally enable OAuth2/OIDC, and perform common calls like listing resources, calling tools, and working with prompts.
+This guide shows how to create an MCP client in Go, connect via different transports (SSE, streamable, stdio), optionally enable OAuth2/OIDC, and perform common calls like listing resources, calling tools, and working with prompts.
 
 ## Transports
 
@@ -59,7 +59,7 @@ _, _ = cli.Initialize(ctx)
 
 ## OAuth2 / OIDC (optional)
 
-When an MCP server requires OAuth2/OIDC, build an authenticated `http.Client` using the helper round-tripper and pass it to the SSE/streaming transport.
+When an MCP server requires OAuth2/OIDC, build an authenticated `http.Client` using the helper round-tripper and pass it to the SSE/streamable transport.
 
 ```go
 import (
@@ -103,7 +103,7 @@ cli, err := mcp.NewClient(handler, &mcp.ClientOptions{
     Name:    "Demo",
     Version: "1.0",
     Transport: mcp.ClientTransport{
-        Type: "sse", // or "streaming" or "stdio"
+        Type: "sse", // or "streamable" or "stdio"
         ClientTransportHTTP: mcp.ClientTransportHTTP{URL: "http://localhost:4981/sse"},
         // ClientTransportStdio: mcp.ClientTransportStdio{Command: "./serverbin"},
     },

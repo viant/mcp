@@ -241,7 +241,7 @@ You can connect to an MCP server over stdio, HTTP/SSE, or HTTP streamable.
   fmt.Println("tools:", len(tools.Tools))
   ```
 
-- Streaming client:
+- Streamable client:
 
   ```go
   ctx := context.Background()
@@ -261,7 +261,7 @@ You can connect to an MCP server over stdio, HTTP/SSE, or HTTP streamable.
 
 - OAuth2/OIDC (optional):
 
-  See the Authentication section below for creating an `http.Client` with token handling and passing it to the SSE/streaming transports.
+  See the Authentication section below for creating an `http.Client` with token handling and passing it to the SSE/streamable transports.
 
 Advanced: If you need automatic reconnect and integrated auth, use the helper `mcp.NewClient(handler, *ClientOptions)` from the root package, which builds the transport and wires an auth interceptor. Supply a `pclient.Handler` implementation if your client needs to support server-initiated calls (roots, sampling, elicitation).
 

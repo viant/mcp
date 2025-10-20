@@ -172,7 +172,7 @@ Clients discover the tool and its schemas via tools/list.
 
 ## Create a Client
 
-Connect from Go using SSE, streaming, or stdio transports.
+Connect from Go using SSE, streamable, or stdio transports.
 
 ### SSE client
 
@@ -183,7 +183,7 @@ Connect from Go using SSE, streaming, or stdio transports.
     res, _ := cli.ListResources(ctx, nil)
     fmt.Println("resources:", len(res.Resources))
 
-### Streaming client
+### Streamable client
 
     streamTransport, _ := streamable.New(ctx, "http://localhost:4981/")
     cli := client.New("Demo", "1.0", streamTransport)

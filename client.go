@@ -35,6 +35,11 @@ type ClientOptions struct {
 	Namespace       string          `yaml:"namespace,omitempty" json:"namespace,omitempty"  short:"N" long:"namespace" description:"mcp namespace"`
 	Transport       ClientTransport `yaml:"transport,omitempty" json:"transport,omitempty"  short:"t" long:"transport" description:"mcp transport options"`
 	Auth            *ClientAuth     `yaml:"auth,omitempty" json:"auth,omitempty"  short:"a" long:"auth" description:"mcp auth options"`
+
+	// cachedAuthRT and cachedHTTPClient ensure authentication transport and token store
+	// are reused across reconnects to avoid losing tokens.
+	cachedAuthRT     *authtransport.RoundTripper
+	cachedHTTPClient *http.Client
 }
 
 // ClientAuth defines authentication options for an MCP client.
@@ -47,7 +52,7 @@ type ClientAuth struct {
 
 // ClientTransport defines transport options for an MCP client.
 type ClientTransport struct {
-	Type                 string `yaml:"type" json:"type"  short:"T" long:"transport-type" description:"mcp transport type, e.g., stdio, sse, streaming" choice:"stdio" choice:"sse" choice:"streaming"`
+	Type                 string `yaml:"type" json:"type"  short:"T" long:"transport-type" description:"mcp transport type, e.g., stdio, sse, streamable" choice:"stdio" choice:"sse" choice:"streamable"`
 	ClientTransportStdio `yaml:",inline"`
 	ClientTransportHTTP  `yaml:",inline"`
 }
@@ -102,19 +107,24 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 	var authRT *authtransport.RoundTripper
 	if c.Auth != nil {
 		if c.Auth.BackendForFrontend {
-			transportOpts := []authtransport.Option{authtransport.WithBackendForFrontendAuth()}
-			if c.Auth.UseIdToken {
-				transportOpts = append(transportOpts, authtransport.WithGlobalResource(&authorization.Authorization{
-					UseIdToken:                c.Auth.UseIdToken,
-					ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{AuthorizationServers: []string{}},
-				}))
+			// build once and reuse across reconnects
+			if c.cachedAuthRT == nil {
+				transportOpts := []authtransport.Option{authtransport.WithBackendForFrontendAuth()}
+				if c.Auth.UseIdToken {
+					transportOpts = append(transportOpts, authtransport.WithGlobalResource(&authorization.Authorization{
+						UseIdToken:                c.Auth.UseIdToken,
+						ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{AuthorizationServers: []string{}},
+					}))
+				}
+				rt, err := authtransport.New(transportOpts...)
+				if err != nil {
+					return nil, nil, err
+				}
+				c.cachedAuthRT = rt
+				c.cachedHTTPClient = &http.Client{Transport: rt}
 			}
-			rt, err := authtransport.New(transportOpts...)
-			if err != nil {
-				return nil, nil, err
-			}
-			authRT = rt
-			httpClient = &http.Client{Transport: rt}
+			authRT = c.cachedAuthRT
+			httpClient = c.cachedHTTPClient
 		} else if len(c.Auth.OAuth2ConfigURL) > 0 {
 			var err error
 			httpClient, err = c.getOAuthHTTPClient(ctx)
@@ -157,7 +167,7 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			return nil, nil, fmt.Errorf("failed to create SSE transport: %w", err)
 		}
 		return ret, authRT, nil
-	case "streaming":
+	case "streamable":
 		httpOptions := c.Transport.ClientTransportHTTP
 
 		opts := []streamable.Option{}
@@ -167,7 +177,7 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 		opts = append(opts, streamable.WithHandler(clientHandler))
 		ret, err := streamable.New(ctx, httpOptions.URL, opts...)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create streaming transport: %w", err)
+			return nil, nil, fmt.Errorf("failed to create streamable transport: %w", err)
 		}
 		return ret, authRT, nil
 	default:
@@ -178,9 +188,14 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 // getOAuthHTTPClient constructs an HTTP client with OAuth2 transport.
 // It attempts each OAuth2 config URL in order, returning the first successful client.
 func (c *ClientOptions) getOAuthHTTPClient(ctx context.Context) (*http.Client, error) {
+	// reuse cached client if present
+	if c.cachedHTTPClient != nil {
+		return c.cachedHTTPClient, nil
+	}
+
 	var errs []error
 	var memOptions []store.MemoryStoreOption
-	for _, raw := range c.Auth.OAuth2ConfigURL { //load oauth client for each config URL, as each mcp server may use different oauth issuer for different resources/tools
+	for _, raw := range c.Auth.OAuth2ConfigURL { // load oauth client for each config URL
 		configURL := raw
 		if c.Auth.EncryptionKey != "" {
 			configURL += "|" + c.Auth.EncryptionKey
@@ -198,7 +213,6 @@ func (c *ClientOptions) getOAuthHTTPClient(ctx context.Context) (*http.Client, e
 		authtransport.WithStore(memStore),
 		authtransport.WithAuthFlow(flow.NewBrowserFlow()),
 	}
-
 	if c.Auth.BackendForFrontend {
 		transportOpts = append([]authtransport.Option{authtransport.WithBackendForFrontendAuth()}, transportOpts...)
 	}
@@ -212,7 +226,9 @@ func (c *ClientOptions) getOAuthHTTPClient(ctx context.Context) (*http.Client, e
 	if err != nil {
 		return nil, err
 	}
-	return &http.Client{Transport: rt}, nil
+	c.cachedAuthRT = rt
+	c.cachedHTTPClient = &http.Client{Transport: rt}
+	return c.cachedHTTPClient, nil
 }
 
 // Options builds client options (metadata and auth interceptor) based on ClientOptions.Auth and Namespace.

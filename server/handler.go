@@ -98,6 +98,27 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 		h.setResponse(response, result, err)
 	case schema.MethodToolsCall:
 		result, err := h.CallTool(ctx, request)
+		// For tool call errors, return a CallToolResult with isError flag instead of JSON-RPC error
+		if err != nil {
+			isErr := true
+			msg := err.Message
+			structured := map[string]interface{}{
+				"error":   true,
+				"code":    err.Code,
+				"message": err.Message,
+			}
+			if len(err.Data) > 0 {
+				structured["data"] = json.RawMessage(err.Data)
+			}
+			result = &schema.CallToolResult{
+				IsError:           &isErr,
+				StructuredContent: structured,
+				Content: []schema.CallToolResultContentElem{
+					{Type: "text", Text: msg},
+				},
+			}
+			err = nil
+		}
 		h.setResponse(response, result, err)
 	case schema.MethodComplete:
 		result, err := h.Complete(ctx, request)

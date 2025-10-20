@@ -29,11 +29,16 @@ type ServerTransport struct {
 }
 
 type ServerTransportOptions struct {
-	Type            string       `yaml:"type" json:"type"  short:"T" long:"transport-type" description:"mcp transport type, e.g., stdio, sse, streaming" choice:"stdio" choice:"sse" choice:"streaming"`
+	Type            string       `yaml:"type" json:"type"  short:"T" long:"transport-type" description:"mcp transport type, e.g., stdio, sse, streamable" choice:"stdio" choice:"sse" choice:"streamable"`
 	Port            int          `yaml:"port" json:"port"`
 	Endpoint        string       `yaml:"endpoint" json:"endpoint"`
 	MessageEndpoint string       `yaml:"messageEndpoint" json:"messageEndpoint"`
 	Cors            *server.Cors `yaml:"cors" json:"cors"`
+	// Optional HTTP transport configuration
+	SSEURI        string `yaml:"sseURI" json:"sseURI"`
+	SSEMessageURI string `yaml:"sseMessageURI" json:"sseMessageURI"`
+	StreamableURI string `yaml:"streamableURI" json:"streamableURI"`
+	RootRedirect  bool   `yaml:"rootRedirect" json:"rootRedirect"`
 }
 
 type ServerOptionAuth struct {
@@ -82,8 +87,11 @@ func NewServer(newHandler protoserver.NewHandler, options *ServerOptions) (*serv
 			transportOptions := options.Transport
 
 			// global transport type detection – top-level declaration wins
-			if transportOptions.Type == "streaming" {
+			switch transportOptions.Type {
+			case "streamable":
 				useStreaming = true
+			case "sse":
+				useStreaming = false
 			}
 
 			// nested transport options
@@ -91,14 +99,31 @@ func NewServer(newHandler protoserver.NewHandler, options *ServerOptions) (*serv
 				if transportOptions.Options.Port > 0 {
 					serverOptions = append(serverOptions, server.WithEndpointAddress(fmt.Sprintf(":%v", transportOptions.Options.Port)))
 				}
-				// streaming detection can be provided here as well
-				if transportOptions.Options.Type == "streaming" {
+				// streamable detection can be provided here as well
+				switch transportOptions.Options.Type {
+				case "streamable":
 					useStreaming = true
+				case "sse":
+					useStreaming = false
 				}
 
 				// CORS configuration
 				if transportOptions.Options.Cors != nil {
 					serverOptions = append(serverOptions, server.WithCORS(transportOptions.Options.Cors))
+				}
+
+				// HTTP transport URIs and root redirect
+				if transportOptions.Options.SSEURI != "" {
+					serverOptions = append(serverOptions, server.WithSSEURI(transportOptions.Options.SSEURI))
+				}
+				if transportOptions.Options.SSEMessageURI != "" {
+					serverOptions = append(serverOptions, server.WithSSEMessageURI(transportOptions.Options.SSEMessageURI))
+				}
+				if transportOptions.Options.StreamableURI != "" {
+					serverOptions = append(serverOptions, server.WithStreamableURI(transportOptions.Options.StreamableURI))
+				}
+				if transportOptions.Options.RootRedirect {
+					serverOptions = append(serverOptions, server.WithRootRedirect(true))
 				}
 			}
 

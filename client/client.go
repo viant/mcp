@@ -218,7 +218,8 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 	if !client.isInitialized() { //ensure initialized
 		return nil, jsonrpc.NewInternalError(errUninitialized.Error(), nil)
 	}
-	clientTransport := client.transport
+	// always use the latest transport on the client to avoid using
+	// a stale transport after reconnect
 	req, err := jsonrpc.NewRequest(method, parameters)
 	if err != nil {
 		return nil, jsonrpc.NewInvalidRequest(err.Error(), nil)
@@ -235,7 +236,7 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 		}
 	}
 	// Send initial request
-	response, err := clientTransport.Send(ctx, req)
+	response, err := client.transport.Send(ctx, req)
 	if err != nil {
 		// Automatic session recovery – if the server has been restarted, the existing session can be lost.
 		// In that case the transport returns an HTTP 404 error containing "session '<id>' not found".
@@ -271,7 +272,8 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 			return nil, jsonrpc.NewInternalError(interceptErr.Error(), nil)
 		}
 		if nextReq != nil {
-			response, err = clientTransport.Send(ctx, nextReq)
+			// use the current transport (may have changed due to reconnect)
+			response, err = client.transport.Send(ctx, nextReq)
 			if err != nil {
 				return nil, jsonrpc.NewInternalError(err.Error(), nil)
 			}
