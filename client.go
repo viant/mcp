@@ -40,6 +40,11 @@ type ClientOptions struct {
 	// are reused across reconnects to avoid losing tokens.
 	cachedAuthRT     *authtransport.RoundTripper
 	cachedHTTPClient *http.Client
+
+	// CookieJar, if set, is attached to the underlying HTTP client so that
+	// servers using cookies (e.g., BFF flows) can persist session cookies
+	// across reconnects and calls.
+	CookieJar http.CookieJar `yaml:"-" json:"-"`
 }
 
 // ClientAuth defines authentication options for an MCP client.
@@ -48,6 +53,10 @@ type ClientAuth struct {
 	EncryptionKey      string   `yaml:"encryptionKey,omitempty" json:"encryptionKey,omitempty"  short:"k" long:"key" description:"encryption key"`
 	UseIdToken         bool     `yaml:"useIdToken,omitempty" json:"useIdToken,omitempty"`
 	BackendForFrontend bool     `yaml:"backendForFrontend,omitempty" json:"backendForFrontend,omitempty"  short:"b" long:"backend-for-frontend" description:"use backend for frontend"`
+
+	// Store allows injecting a persistent token store so tokens survive
+	// across multiple client instances (e.g., per-user cache in caller).
+	Store store.Store `yaml:"-" json:"-"`
 }
 
 // ClientTransport defines transport options for an MCP client.
@@ -109,7 +118,11 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 		if c.Auth.BackendForFrontend {
 			// build once and reuse across reconnects
 			if c.cachedAuthRT == nil {
-				transportOpts := []authtransport.Option{authtransport.WithBackendForFrontendAuth()}
+				transportOpts := []authtransport.Option{authtransport.WithBackendForFrontendAuth(), authtransport.WithIgnoreContextToken()}
+				if c.CookieJar != nil {
+					transportOpts = append(transportOpts, authtransport.WithCookieJar(c.CookieJar))
+					transportOpts = append(transportOpts, authtransport.WithTransport(authtransport.WrapWithCookieJar(http.DefaultTransport, c.CookieJar)))
+				}
 				if c.Auth.UseIdToken {
 					transportOpts = append(transportOpts, authtransport.WithGlobalResource(&authorization.Authorization{
 						UseIdToken:                c.Auth.UseIdToken,
@@ -121,7 +134,12 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 					return nil, nil, err
 				}
 				c.cachedAuthRT = rt
-				c.cachedHTTPClient = &http.Client{Transport: rt}
+				// wrap transport with cookie jar if provided
+				var base http.RoundTripper = rt
+				if c.CookieJar != nil {
+					base = authtransport.WrapWithCookieJar(base, c.CookieJar)
+				}
+				c.cachedHTTPClient = &http.Client{Transport: base, Jar: c.CookieJar}
 			}
 			authRT = c.cachedAuthRT
 			httpClient = c.cachedHTTPClient
@@ -131,8 +149,10 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			if err != nil {
 				return nil, nil, err
 			}
-			if rt, ok := httpClient.Transport.(*authtransport.RoundTripper); ok {
-				authRT = rt
+			// We build the HTTP client and keep the original RoundTripper cached,
+			// so prefer the cached pointer instead of relying on type assertion on Transport.
+			if c.cachedAuthRT != nil {
+				authRT = c.cachedAuthRT
 			}
 		}
 	}
@@ -208,10 +228,19 @@ func (c *ClientOptions) getOAuthHTTPClient(ctx context.Context) (*http.Client, e
 		}
 		memOptions = append(memOptions, store.WithClientConfig(oauthCfg.Config))
 	}
-	memStore := store.NewMemoryStore(memOptions...)
+	var authStore store.Store
+	if c.Auth != nil && c.Auth.Store != nil {
+		authStore = c.Auth.Store
+	} else {
+		authStore = store.NewMemoryStore(memOptions...)
+	}
 	transportOpts := []authtransport.Option{
-		authtransport.WithStore(memStore),
+		authtransport.WithStore(authStore),
 		authtransport.WithAuthFlow(flow.NewBrowserFlow()),
+	}
+	if c.CookieJar != nil {
+		transportOpts = append(transportOpts, authtransport.WithCookieJar(c.CookieJar))
+		transportOpts = append(transportOpts, authtransport.WithTransport(authtransport.WrapWithCookieJar(http.DefaultTransport, c.CookieJar)))
 	}
 	if c.Auth.BackendForFrontend {
 		transportOpts = append([]authtransport.Option{authtransport.WithBackendForFrontendAuth()}, transportOpts...)
@@ -227,8 +256,22 @@ func (c *ClientOptions) getOAuthHTTPClient(ctx context.Context) (*http.Client, e
 		return nil, err
 	}
 	c.cachedAuthRT = rt
-	c.cachedHTTPClient = &http.Client{Transport: rt}
+	// wrap transport with cookie jar if provided
+	var base http.RoundTripper = rt
+	if c.CookieJar != nil {
+		base = authtransport.WrapWithCookieJar(base, c.CookieJar)
+	}
+	c.cachedHTTPClient = &http.Client{Transport: base, Jar: c.CookieJar}
 	return c.cachedHTTPClient, nil
+}
+
+// AuthStore exposes the underlying token store used by the auth transport.
+// It allows callers to persist and reuse tokens across client instances.
+func (c *ClientOptions) AuthStore() store.Store {
+	if c.cachedAuthRT == nil {
+		return nil
+	}
+	return c.cachedAuthRT.Store()
 }
 
 // Options builds client options (metadata and auth interceptor) based on ClientOptions.Auth and Namespace.

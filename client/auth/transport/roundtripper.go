@@ -24,6 +24,10 @@ type RoundTripper struct {
 	bffFlow         flow.BackendForFrontendFlow
 	authFlowOptions []flow.Option
 	transport       http.RoundTripper
+	jar             http.CookieJar
+	ignoreCtxToken  bool
+	rejected        map[string]time.Time
+	rejectTTL       time.Duration
 	mux             sync.Mutex
 }
 
@@ -34,12 +38,33 @@ func (r *RoundTripper) Store() store.Store {
 func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// 1) First, send the request; if ctx carries an explicit token, attach it.
 	probe := clone(req)
-	if token := getAuthToken(req.Context()); token != "" {
-		probe.Header.Set("Authorization", "Bearer "+token)
+	// attach cookies from jar if present
+	if r.jar != nil {
+		for _, c := range r.jar.Cookies(probe.URL) {
+			probe.AddCookie(c)
+		}
+	}
+	var ctxToken string
+	if !r.ignoreCtxToken {
+		if token := getAuthToken(req.Context()); token != "" {
+			if r.rejected != nil {
+				if exp, ok := r.rejected[token]; !(ok && time.Now().Before(exp)) {
+					ctxToken = token
+				}
+			} else {
+				ctxToken = token
+			}
+		}
+	}
+	if ctxToken != "" {
+		probe.Header.Set("Authorization", "Bearer "+ctxToken)
 	}
 	resp, err := r.transport.RoundTrip(probe)
 	if err != nil {
 		return nil, err
+	}
+	if r.jar != nil {
+		r.jar.SetCookies(probe.URL, resp.Cookies())
 	}
 
 	// 2) If it wasn’t a 401, just return it.
@@ -50,16 +75,35 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp.Body.Close()
 
 	ctx := req.Context()
+	if ctxToken != "" {
+		if r.rejected == nil {
+			r.rejected = map[string]time.Time{}
+		}
+		ttl := r.rejectTTL
+		if ttl <= 0 {
+			ttl = 10 * time.Minute
+		}
+		r.rejected[ctxToken] = time.Now().Add(ttl)
+	}
 	if r.useBFF {
 		if authorizationURI, _ := parseAuthorizationURI(resp); authorizationURI != "" {
 			exchange, err := r.bffFlow.BeginAuthorization(req.Context(), authorizationURI)
 			if err != nil {
 				return nil, err
 			}
-			// 4) Replay the request with the Bearer header.
+			// 4) Replay the request with the exchange header.
 			retry := clone(req)
+			if r.jar != nil {
+				for _, c := range r.jar.Cookies(retry.URL) {
+					retry.AddCookie(c)
+				}
+			}
 			retry.Header.Set(r.bffHeader, exchange.ToHeader())
-			return r.transport.RoundTrip(retry)
+			rresp, rerr := r.transport.RoundTrip(retry)
+			if rerr == nil && r.jar != nil {
+				r.jar.SetCookies(retry.URL, rresp.Cookies())
+			}
+			return rresp, rerr
 		}
 	}
 
@@ -77,8 +121,17 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// 4) Replay the request with the Bearer header.
 	retry := clone(req)
+	if r.jar != nil {
+		for _, c := range r.jar.Cookies(retry.URL) {
+			retry.AddCookie(c)
+		}
+	}
 	retry.Header.Set("Authorization", "Bearer "+tok.AccessToken)
-	return r.transport.RoundTrip(retry)
+	rresp, rerr := r.transport.RoundTrip(retry)
+	if rerr == nil && r.jar != nil {
+		r.jar.SetCookies(retry.URL, rresp.Cookies())
+	}
+	return rresp, rerr
 }
 
 func (r *RoundTripper) Token(ctx context.Context, resp *http.Response) (*oauth2.Token, error) {
@@ -100,7 +153,7 @@ func (r *RoundTripper) ProtectedResourceToken(ctx context.Context, resourceMetad
 	authorizationServerMetadata, _ := r.store.LookupAuthorizationServerMetadata(issuer)
 	var err error
 	if authorizationServerMetadata == nil {
-		authorizationServerMetadata, err = meta.FetchAuthorizationServerMetadata(ctx, issuer, &http.Client{Transport: r.transport})
+		authorizationServerMetadata, err = meta.FetchAuthorizationServerMetadata(ctx, issuer, &http.Client{Transport: r.transport, Jar: r.jar})
 		if err != nil {
 			return nil, err
 		}
@@ -167,7 +220,7 @@ func (r *RoundTripper) loadProtectedResourceMetadata(ctx context.Context, resp *
 	if err != nil {
 		return nil, err
 	}
-	return meta.FetchProtectedResourceMetadata(ctx, protectedResourceMetadataURL, &http.Client{Transport: r.transport})
+	return meta.FetchProtectedResourceMetadata(ctx, protectedResourceMetadataURL, &http.Client{Transport: r.transport, Jar: r.jar})
 }
 
 func New(options ...Option) (*RoundTripper, error) {
