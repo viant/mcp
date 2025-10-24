@@ -16,6 +16,7 @@ import (
 	"github.com/viant/gosh/runner/local"
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport/client/http/sse"
+	streamable "github.com/viant/jsonrpc/transport/client/http/streamable"
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
 	"github.com/viant/mcp-protocol/schema"
@@ -26,6 +27,7 @@ import (
 	"github.com/viant/mcp/example/tool"
 	"github.com/viant/mcp/server"
 	"github.com/viant/mcp/server/auth"
+	"net/http/cookiejar"
 )
 
 const (
@@ -47,6 +49,64 @@ func Test_PerCallAuth(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 	err := runClient(t)
 	assert.Nil(t, err)
+}
+
+func Test_PerCallAuth_StreamableHTTP(t *testing.T) {
+	go func() {
+		if err := startAuthorizer(); err != nil {
+			t.Error(err)
+		}
+	}()
+	go func() {
+		if err := startServer(); err != nil {
+			t.Error(err)
+		}
+	}()
+	time.Sleep(1500 * time.Millisecond)
+
+	ctx := context.Background()
+	// streamable HTTP transport with auth RoundTripper (per-call token via options)
+	tr, err := getAuthHTTPClient()
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	transport, err := streamable.New(ctx, fmt.Sprintf("http://localhost:%d/mcp", perCallServerPort), streamable.WithHTTPClient(tr))
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	cli := client.New("tester", "0.1", transport, client.WithCapabilities(schema.ClientCapabilities{}))
+	initRes, err := cli.Initialize(ctx)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, "MCP Terminal", initRes.ServerInfo.Name)
+
+	// Acquire access token and use per-call option
+	token, err := obtainAccessToken(fmt.Sprintf("http://localhost:%d", perCallAuthPort))
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	cmd, err := schema.NewCallToolRequestParams[*tool.TerminalCommand]("terminal", &tool.TerminalCommand{Commands: []string{"echo hello"}})
+	if !assert.NoError(t, err) {
+		return
+	}
+	res, rerr := cli.CallTool(ctx, cmd, client.WithAuthToken(token))
+	if !assert.Nil(t, rerr) {
+		return
+	}
+	assert.NotNil(t, res)
+
+	// Two more calls using the same per-call token
+	for i := 0; i < 2; i++ {
+		res, rerr = cli.CallTool(ctx, cmd, client.WithAuthToken(token))
+		if !assert.Nil(t, rerr) {
+			return
+		}
+		assert.NotNil(t, res)
+	}
 }
 
 func runClient(t *testing.T) error {
@@ -143,6 +203,17 @@ func getHttpTransport(ctx context.Context) (*sse.Client, error) {
 			// optional debug: b, _ := json.Marshal(m); fmt.Println(string(b))
 		}),
 	)
+}
+
+// getAuthHTTPClient returns an *http.Client configured with the auth RoundTripper
+// so Authorization header can be injected from context per call (for streamable HTTP).
+func getAuthHTTPClient() (*http.Client, error) {
+	jar, _ := cookiejar.New(nil)
+	rt, err := authtransport.New(authtransport.WithCookieJar(jar))
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{Transport: rt, Jar: jar}, nil
 }
 
 func authorizationService() (*auth.Service, error) {
