@@ -2,10 +2,11 @@ package auth
 
 import (
 	"context"
-	"github.com/viant/scy/auth/flow"
-	"golang.org/x/oauth2"
 	"net/http"
 	"time"
+
+	"github.com/viant/scy/auth/flow"
+	"golang.org/x/oauth2"
 )
 
 // Verifier is used to store the code verifier for the backend-to-frontend flow
@@ -29,9 +30,13 @@ func (s *Service) handleAuthorizationExchange(r *http.Request) (*oauth2.Token, e
 				return nil, nil
 			}
 			s.codeVerifiers.Delete(sessionID)
-			return flow.Exchange(r.Context(), cfg.Client, authorizationExchange.Code, flow.WithPKCE(true),
+			tok, err := flow.Exchange(r.Context(), cfg.Client, authorizationExchange.Code, flow.WithPKCE(true),
 				flow.WithCodeVerifier(verifier.Code),
 				flow.WithRedirectURI(authorizationExchange.RedirectURI))
+			if err != nil {
+				return nil, err
+			}
+			return tok, nil
 		}
 	}
 	return nil, nil

@@ -87,7 +87,6 @@ func (c *ClientOptions) Init() {
 // NewClient creates an MCP client with transport and authorization configured via ClientOptions.
 func NewClient(handler pclient.Handler, options *ClientOptions) (*client.Client, error) {
 	ctx := context.Background()
-
 	// Build initial transport and capture a factory for future reconnects.
 	dial := func(ctx context.Context) (transport.Transport, error) {
 		t, _, err := options.getTransport(ctx, handler)
@@ -118,10 +117,13 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 		if c.Auth.BackendForFrontend {
 			// build once and reuse across reconnects
 			if c.cachedAuthRT == nil {
-				transportOpts := []authtransport.Option{authtransport.WithBackendForFrontendAuth(), authtransport.WithIgnoreContextToken()}
+				fmt.Printf("[mcp/client] BFF enabled; building auth RT jar=%t\n", c.CookieJar != nil)
+				transportOpts := []authtransport.Option{authtransport.WithBackendForFrontendAuth()}
+				if c.Auth != nil && c.Auth.Store != nil {
+					transportOpts = append(transportOpts, authtransport.WithStore(c.Auth.Store))
+				}
 				if c.CookieJar != nil {
 					transportOpts = append(transportOpts, authtransport.WithCookieJar(c.CookieJar))
-					transportOpts = append(transportOpts, authtransport.WithTransport(authtransport.WrapWithCookieJar(http.DefaultTransport, c.CookieJar)))
 				}
 				if c.Auth.UseIdToken {
 					transportOpts = append(transportOpts, authtransport.WithGlobalResource(&authorization.Authorization{
@@ -135,14 +137,11 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 				}
 				c.cachedAuthRT = rt
 				// wrap transport with cookie jar if provided
-				var base http.RoundTripper = rt
-				if c.CookieJar != nil {
-					base = authtransport.WrapWithCookieJar(base, c.CookieJar)
-				}
-				c.cachedHTTPClient = &http.Client{Transport: base, Jar: c.CookieJar}
+				c.cachedHTTPClient = &http.Client{Transport: rt, Jar: c.CookieJar}
 			}
 			authRT = c.cachedAuthRT
 			httpClient = c.cachedHTTPClient
+			fmt.Printf("[mcp/client] BFF httpClient ready jar=%t\n", httpClient != nil && httpClient.Jar != nil)
 		} else if len(c.Auth.OAuth2ConfigURL) > 0 {
 			var err error
 			httpClient, err = c.getOAuthHTTPClient(ctx)
@@ -154,6 +153,7 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			if c.cachedAuthRT != nil {
 				authRT = c.cachedAuthRT
 			}
+			fmt.Printf("[mcp/client] OAuth2 httpClient ready jar=%t\n", httpClient != nil && httpClient.Jar != nil)
 		}
 	}
 
@@ -240,7 +240,6 @@ func (c *ClientOptions) getOAuthHTTPClient(ctx context.Context) (*http.Client, e
 	}
 	if c.CookieJar != nil {
 		transportOpts = append(transportOpts, authtransport.WithCookieJar(c.CookieJar))
-		transportOpts = append(transportOpts, authtransport.WithTransport(authtransport.WrapWithCookieJar(http.DefaultTransport, c.CookieJar)))
 	}
 	if c.Auth.BackendForFrontend {
 		transportOpts = append([]authtransport.Option{authtransport.WithBackendForFrontendAuth()}, transportOpts...)
@@ -257,11 +256,7 @@ func (c *ClientOptions) getOAuthHTTPClient(ctx context.Context) (*http.Client, e
 	}
 	c.cachedAuthRT = rt
 	// wrap transport with cookie jar if provided
-	var base http.RoundTripper = rt
-	if c.CookieJar != nil {
-		base = authtransport.WrapWithCookieJar(base, c.CookieJar)
-	}
-	c.cachedHTTPClient = &http.Client{Transport: base, Jar: c.CookieJar}
+	c.cachedHTTPClient = &http.Client{Transport: rt, Jar: c.CookieJar}
 	return c.cachedHTTPClient, nil
 }
 

@@ -4,7 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/viant/jsonrpc"
+	streamauth "github.com/viant/jsonrpc/transport/server/auth"
 	"github.com/viant/jsonrpc/transport/server/http/session"
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/schema"
@@ -12,11 +20,6 @@ import (
 	"github.com/viant/mcp/client/auth/transport"
 	"github.com/viant/scy/auth"
 	"golang.org/x/oauth2"
-	"io"
-	"net/http"
-	"net/url"
-	"strings"
-	"time"
 )
 
 // Service acts as a broker between clients and external OAuth2/OIDC providers.
@@ -28,6 +31,11 @@ type Service struct {
 	//These are used by the backend-to-frontend flow
 	codeVerifiers *syncmap.Map[string, *Verifier]
 	resourceToken *syncmap.Map[string, *oauth2.Token]
+
+	// bffGrantStore holds references to the jsonrpc BFF auth store (shared with transport
+	// handlers) to allow setting an auth cookie when authorization has been established.
+	bffGrantStore     streamauth.Store
+	bffAuthCookieName string
 }
 
 func (s *Service) RegisterHandlers(mux *http.ServeMux) {
@@ -57,7 +65,8 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 }
 
 func (s *Service) shouldBypass(r *http.Request) bool {
-	return s.Config.IsJSONRPCMediationMode() || (s.Policy.ExcludeURI != "" && strings.HasPrefix(r.URL.Path, s.Policy.ExcludeURI)) || r.Method != http.MethodPost
+	bypass := s.Config.IsJSONRPCMediationMode() || (s.Policy.ExcludeURI != "" && strings.HasPrefix(r.URL.Path, s.Policy.ExcludeURI)) || r.Method != http.MethodPost
+	return bypass
 }
 
 func (s *Service) extractJSONRPCRequest(r *http.Request) ([]byte, *jsonrpc.Request, error) {
@@ -100,15 +109,21 @@ func (s *Service) resolveAuthorizationRule(jRequest *jsonrpc.Request) (*authoriz
 func (s *Service) handleAuthorization(w http.ResponseWriter, r *http.Request, next http.Handler, resourceURI string, rule *authorization.Authorization) {
 	err := s.ensureResourceToken(r, rule)
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	cookieName := s.bffAuthCookieName
+	if cookieName == "" {
+		cookieName = defaultBFFAuthCookieName
+	}
 	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 		token := &authorization.Token{Token: authHeader}
 		rWithToken := r.WithContext(context.WithValue(r.Context(), authorization.TokenKey, token))
+		s.ensureBFFAuthCookie(w, r)
 		next.ServeHTTP(w, rWithToken)
 		return
 	}
 	if s.FallBack != nil {
 		if token, _ := s.FallBack.Token(r.Context(), rule); token != nil {
 			rWithToken := r.WithContext(context.WithValue(r.Context(), authorization.TokenKey, token))
+			s.ensureBFFAuthCookie(w, r)
 			next.ServeHTTP(w, rWithToken)
 			return
 		}
@@ -146,6 +161,43 @@ func (s *Service) handleAuthorization(w http.ResponseWriter, r *http.Request, ne
 	}
 }
 
+// ensureBFFAuthCookie mints or refreshes a BFF auth cookie when authorization
+// is established and a shared grant store is available. The cookie contains an
+// opaque grant id; tokens are never stored in cookies.
+func (s *Service) ensureBFFAuthCookie(w http.ResponseWriter, r *http.Request) {
+	if s.bffGrantStore == nil {
+		if defaultBFFGrantStore == nil {
+			defaultBFFGrantStore = streamauth.NewMemoryStore(30*time.Minute, 24*time.Hour, 2*time.Minute)
+		}
+		s.bffGrantStore = defaultBFFGrantStore
+	}
+	if r.Method != http.MethodPost {
+		return
+	}
+	name := s.bffAuthCookieName
+	if s.Config != nil && s.Config.BackendForFrontend != nil && strings.TrimSpace(s.Config.BackendForFrontend.AuthorizationExchangeHeader) != "" {
+		// Name remains default unless overridden globally; header presence only indicates BFF mode
+	}
+	if name == "" {
+		name = defaultBFFAuthCookieName
+	}
+	if ck, err := r.Cookie(name); err == nil && ck.Value != "" {
+		// touch existing grant and refresh cookie
+		_ = s.bffGrantStore.Touch(r.Context(), ck.Value, time.Now())
+		http.SetCookie(w, &http.Cookie{Name: name, Value: ck.Value, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		return
+	}
+	// mint new grant and set cookie
+	g := streamauth.NewGrant("")
+	_ = s.bffGrantStore.Put(r.Context(), g)
+	http.SetCookie(w, &http.Cookie{Name: name, Value: g.ID, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+}
+
+var aDbg struct {
+	once sync.Once
+	v    bool
+}
+
 func (s *Service) getToken(r *http.Request, rule *authorization.Authorization, token *oauth2.Token) (*oauth2.Token, error) {
 	if rule.UseIdToken {
 		return auth.IdToken(r.Context(), token)
@@ -154,9 +206,17 @@ func (s *Service) getToken(r *http.Request, rule *authorization.Authorization, t
 }
 
 func (s *Service) getResourceKey(r *http.Request, rule *authorization.Authorization) string {
-	sessionID := s.SessionIdProvider(r)
-	resourceKey := sessionID + rule.ProtectedResourceMetadata.Resource
-	return resourceKey
+	// Prefer a stable BFF auth cookie id when present so tokens survive
+	// across transport session reconnects. Fall back to current session id.
+	key := s.SessionIdProvider(r)
+	name := s.bffAuthCookieName
+	if name == "" {
+		name = defaultBFFAuthCookieName
+	}
+	if ck, err := r.Cookie(name); err == nil && ck != nil && ck.Value != "" {
+		key = ck.Value
+	}
+	return key + rule.ProtectedResourceMetadata.Resource
 }
 
 // expireVerifiersIfNeeded expires verifiers if the size exceeds 1000
@@ -207,8 +267,13 @@ func New(config *Config) (*Service, error) {
 		resourceToken: syncmap.NewMap[string, *oauth2.Token](),
 		SessionIdProvider: func(r *http.Request) string {
 			locator := session.Locator{}
+			// Prefer streamable header, then classic SSE query, then streamable query
+			streamingHeaderLocation := session.NewHeaderLocation("Mcp-Session-Id")
 			sessionLocation := session.NewQueryLocation("session_id")
 			streamingSessionLocation := session.NewQueryLocation("Mcp-Session-Id")
+			if ret, _ := locator.Locate(streamingHeaderLocation, r); ret != "" {
+				return ret
+			}
 			if ret, _ := locator.Locate(sessionLocation, r); ret != "" {
 				return ret
 			}
@@ -217,5 +282,7 @@ func New(config *Config) (*Service, error) {
 			}
 			return ""
 		},
+		bffGrantStore:     defaultBFFGrantStore,
+		bffAuthCookieName: defaultBFFAuthCookieName,
 	}, nil
 }

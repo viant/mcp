@@ -3,9 +3,16 @@ package server
 import (
 	"context"
 	"net/http"
+	"time"
 
+	"fmt"
+	streamauth "github.com/viant/jsonrpc/transport/server/auth"
 	"github.com/viant/jsonrpc/transport/server/http/sse"
 	"github.com/viant/jsonrpc/transport/server/http/streamable"
+	mcpauth "github.com/viant/mcp/server/auth"
+	"os"
+	"strings"
+	"sync"
 )
 
 type httpServer struct {
@@ -45,13 +52,33 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 		s.streamableURI = "/mcp"
 	}
 
+	// Default in-memory BFF AuthStore (dev-friendly). Replace via server options for production.
+	memAuth := streamauth.NewMemoryStore(30*time.Minute, 24*time.Hour, 2*time.Minute)
+	mcpauth.SetDefaultBFFAuthStore(memAuth)
+	mcpauth.SetDefaultBFFAuthCookieName("BFF-Auth-Session")
+	if serverDebug() {
+		fmt.Printf("[mcp/server] HTTP addr=%s sseURI=%s msgURI=%s streamURI=%s\n", addr, s.sseURI, s.sseMessageURI, s.streamableURI)
+	}
+	if serverDebug() {
+		fmt.Printf("[mcp/server] BFF auth: memStore=yes authCookie=BFF-Auth-Session rehydrate=true\n")
+	}
+
 	// SSE and Streamable handlers with configured URIs
+	// Enable BFF auth cookie (opaque grant) and handshake rehydrate; do NOT set transport session in cookies.
 	s.sseHandler = sse.New(s.NewHandler,
 		sse.WithURI(s.sseURI),
 		sse.WithMessageURI(s.sseMessageURI),
+		// Enable auth cookie and rehydrate from it
+		sse.WithAuthStore(memAuth),
+		sse.WithBFFAuthCookie(&sse.BFFAuthCookie{Name: "BFF-Auth-Session", HttpOnly: true}),
+		sse.WithRehydrateOnHandshake(true),
 	)
 	s.streamingHandler = streamable.New(s.NewHandler,
 		streamable.WithURI(s.streamableURI),
+		// Enable auth cookie and rehydrate from it
+		streamable.WithAuthStore(memAuth),
+		streamable.WithBFFAuthCookie(&streamable.BFFAuthCookie{Name: "BFF-Auth-Session", HttpOnly: true}),
+		streamable.WithRehydrateOnHandshake(true),
 	)
 	mux := http.NewServeMux()
 	if len(s.customHTTPHandlers) > 0 {
@@ -97,4 +124,17 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 		Handler: mux,
 	}
 	return server
+}
+
+var srvDbg struct {
+	once sync.Once
+	v    bool
+}
+
+func serverDebug() bool {
+	srvDbg.once.Do(func() {
+		v := strings.ToLower(strings.TrimSpace(os.Getenv("MCP_DEBUG")))
+		srvDbg.v = v != "" && v != "0" && v != "false"
+	})
+	return srvDbg.v
 }

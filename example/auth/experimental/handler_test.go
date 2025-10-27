@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"net/http/cookiejar"
+
 	"github.com/viant/mcp/client"
 	clientauth "github.com/viant/mcp/client/auth"
 	"github.com/viant/mcp/client/auth/mock"
@@ -30,7 +32,6 @@ import (
 	"github.com/viant/mcp/client/auth/transport"
 	"github.com/viant/mcp/server"
 	"github.com/viant/scy/auth/flow"
-	"net/http/cookiejar"
 )
 
 func TestNew(t *testing.T) {

@@ -3,6 +3,8 @@ package transport
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	neturl "net/url"
@@ -86,12 +88,27 @@ func (j *FileJar) save(u *neturl.URL) error {
 	// We cannot enumerate current jar; but SetCookies just wrote to it, so we update/merge
 	// the provided cookies into existing and drop expired.
 	for _, c := range j.inner.Cookies(&neturl.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}) {
-		key := c.Domain + "|" + c.Path + "|" + c.Name
+		// Normalize domain/path for host-only cookies and missing path
+		domain := strings.TrimSpace(c.Domain)
+		if domain == "" {
+			// Use request host without port as cookie domain for host-only cookies
+			host := u.Host
+			if h, _, err := net.SplitHostPort(host); err == nil && h != "" {
+				host = h
+			}
+			// Remove leading dots just in case
+			domain = strings.TrimPrefix(host, ".")
+		}
+		path := c.Path
+		if strings.TrimSpace(path) == "" {
+			path = "/"
+		}
+		key := domain + "|" + path + "|" + c.Name
 		pc := persistedCookie{
 			Name:     c.Name,
 			Value:    c.Value,
-			Domain:   c.Domain,
-			Path:     c.Path,
+			Domain:   domain,
+			Path:     path,
 			Expires:  c.Expires,
 			Secure:   c.Secure,
 			HttpOnly: c.HttpOnly,
@@ -142,6 +159,21 @@ func (j *FileJar) load() error {
 		}
 		host := strings.TrimPrefix(pc.Domain, ".")
 		if host == "" {
+			// Backward-compat: host-only cookies were saved without domain.
+			// Rehydrate them for common dev hosts to avoid prompting again.
+			for _, h := range []string{"localhost", "127.0.0.1"} {
+				u := &neturl.URL{Scheme: scheme, Host: h, Path: pc.Path}
+				j.inner.SetCookies(u, []*http.Cookie{{
+					Name:     pc.Name,
+					Value:    pc.Value,
+					Domain:   h,
+					Path:     pc.Path,
+					Expires:  pc.Expires,
+					Secure:   pc.Secure,
+					HttpOnly: pc.HttpOnly,
+				}})
+				fmt.Printf("[mcp/filejar] rehydrated hostless cookie name=%s to host=%s path=%s secure=%t from=%s\n", pc.Name, h, pc.Path, pc.Secure, j.path)
+			}
 			continue
 		}
 		u := &neturl.URL{Scheme: scheme, Host: host, Path: pc.Path}
@@ -154,6 +186,8 @@ func (j *FileJar) load() error {
 			Secure:   pc.Secure,
 			HttpOnly: pc.HttpOnly,
 		}})
+		// Persist normalized snapshot so future runs don't see hostless cookies
+		_ = j.save(u)
 	}
 	return nil
 }

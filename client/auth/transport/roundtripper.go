@@ -3,15 +3,16 @@ package transport
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"net/http"
+	"sync"
+	"time"
+
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
 	"github.com/viant/mcp/client/auth/store"
 	"github.com/viant/scy/auth/flow"
 	"golang.org/x/oauth2"
-	"math/rand"
-	"net/http"
-	"sync"
-	"time"
 )
 
 type RoundTripper struct {
@@ -25,7 +26,6 @@ type RoundTripper struct {
 	authFlowOptions []flow.Option
 	transport       http.RoundTripper
 	jar             http.CookieJar
-	ignoreCtxToken  bool
 	rejected        map[string]time.Time
 	rejectTTL       time.Duration
 	mux             sync.Mutex
@@ -38,22 +38,22 @@ func (r *RoundTripper) Store() store.Store {
 func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// 1) First, send the request; if ctx carries an explicit token, attach it.
 	probe := clone(req)
+
 	// attach cookies from jar if present
 	if r.jar != nil {
 		for _, c := range r.jar.Cookies(probe.URL) {
 			probe.AddCookie(c)
 		}
 	}
+
 	var ctxToken string
-	if !r.ignoreCtxToken {
-		if token := getAuthToken(req.Context()); token != "" {
-			if r.rejected != nil {
-				if exp, ok := r.rejected[token]; !(ok && time.Now().Before(exp)) {
-					ctxToken = token
-				}
-			} else {
+	if token := getAuthToken(req.Context()); token != "" {
+		if r.rejected != nil {
+			if exp, ok := r.rejected[token]; !(ok && time.Now().Before(exp)) {
 				ctxToken = token
 			}
+		} else {
+			ctxToken = token
 		}
 	}
 	if ctxToken != "" {
@@ -75,35 +75,55 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp.Body.Close()
 
 	ctx := req.Context()
-	if ctxToken != "" {
-		if r.rejected == nil {
-			r.rejected = map[string]time.Time{}
-		}
-		ttl := r.rejectTTL
-		if ttl <= 0 {
-			ttl = 10 * time.Minute
-		}
-		r.rejected[ctxToken] = time.Now().Add(ttl)
-	}
 	if r.useBFF {
 		if authorizationURI, _ := parseAuthorizationURI(resp); authorizationURI != "" {
+			// Optimization: if we already have a valid token for this protected resource in the store,
+			// reuse it instead of performing a BFF exchange. This reduces auth prompts when the app
+			// (browser/BFF) has already mined tokens for the same issuer/scope.
+			if r.store != nil {
+				if meta, perr := r.loadProtectedResourceMetadata(req.Context(), resp); perr == nil && meta != nil {
+					scope := getScope(req.Context())
+					for _, issuer := range meta.AuthorizationServers {
+						if tok, ok := r.store.LookupToken(store.TokenKey{Issuer: issuer, Scopes: scope}); ok && tok != nil && tok.Valid() {
+							retry := clone(req)
+							retry.Header.Set("Authorization", "Bearer "+tok.AccessToken)
+							if r.jar != nil {
+								for _, c := range r.jar.Cookies(retry.URL) {
+									retry.AddCookie(c)
+								}
+							}
+							rr, err := r.transport.RoundTrip(retry)
+							if err == nil && rr.StatusCode != http.StatusUnauthorized {
+								if r.jar != nil {
+									r.jar.SetCookies(retry.URL, rr.Cookies())
+								}
+								return rr, nil
+							}
+						}
+					}
+				}
+			}
 			exchange, err := r.bffFlow.BeginAuthorization(req.Context(), authorizationURI)
 			if err != nil {
 				return nil, err
 			}
-			// 4) Replay the request with the exchange header.
+			// 4) Replay the request with the Bearer header.
 			retry := clone(req)
+			retry.Header.Set(r.bffHeader, exchange.ToHeader())
+			// attach cookies on retry for consistency
 			if r.jar != nil {
 				for _, c := range r.jar.Cookies(retry.URL) {
 					retry.AddCookie(c)
 				}
 			}
-			retry.Header.Set(r.bffHeader, exchange.ToHeader())
-			rresp, rerr := r.transport.RoundTrip(retry)
-			if rerr == nil && r.jar != nil {
-				r.jar.SetCookies(retry.URL, rresp.Cookies())
+			rr, err := r.transport.RoundTrip(retry)
+			if err != nil {
+				return nil, err
 			}
-			return rresp, rerr
+			if r.jar != nil {
+				r.jar.SetCookies(retry.URL, rr.Cookies())
+			}
+			return rr, nil
 		}
 	}
 
@@ -121,17 +141,20 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// 4) Replay the request with the Bearer header.
 	retry := clone(req)
+	retry.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 	if r.jar != nil {
 		for _, c := range r.jar.Cookies(retry.URL) {
 			retry.AddCookie(c)
 		}
 	}
-	retry.Header.Set("Authorization", "Bearer "+tok.AccessToken)
-	rresp, rerr := r.transport.RoundTrip(retry)
-	if rerr == nil && r.jar != nil {
-		r.jar.SetCookies(retry.URL, rresp.Cookies())
+	rr, err := r.transport.RoundTrip(retry)
+	if err != nil {
+		return nil, err
 	}
-	return rresp, rerr
+	if r.jar != nil {
+		r.jar.SetCookies(retry.URL, rr.Cookies())
+	}
+	return rr, nil
 }
 
 func (r *RoundTripper) Token(ctx context.Context, resp *http.Response) (*oauth2.Token, error) {
@@ -153,7 +176,7 @@ func (r *RoundTripper) ProtectedResourceToken(ctx context.Context, resourceMetad
 	authorizationServerMetadata, _ := r.store.LookupAuthorizationServerMetadata(issuer)
 	var err error
 	if authorizationServerMetadata == nil {
-		authorizationServerMetadata, err = meta.FetchAuthorizationServerMetadata(ctx, issuer, &http.Client{Transport: r.transport, Jar: r.jar})
+		authorizationServerMetadata, err = meta.FetchAuthorizationServerMetadata(ctx, issuer, &http.Client{Transport: r.transport})
 		if err != nil {
 			return nil, err
 		}
@@ -220,7 +243,7 @@ func (r *RoundTripper) loadProtectedResourceMetadata(ctx context.Context, resp *
 	if err != nil {
 		return nil, err
 	}
-	return meta.FetchProtectedResourceMetadata(ctx, protectedResourceMetadataURL, &http.Client{Transport: r.transport, Jar: r.jar})
+	return meta.FetchProtectedResourceMetadata(ctx, protectedResourceMetadataURL, &http.Client{Transport: r.transport})
 }
 
 func New(options ...Option) (*RoundTripper, error) {

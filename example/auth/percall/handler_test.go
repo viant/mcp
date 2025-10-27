@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"net/http/cookiejar"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/gosh"
 	"github.com/viant/gosh/runner/local"
 	"github.com/viant/jsonrpc"
-	"github.com/viant/jsonrpc/transport/client/http/sse"
 	streamable "github.com/viant/jsonrpc/transport/client/http/streamable"
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
@@ -27,12 +28,11 @@ import (
 	"github.com/viant/mcp/example/tool"
 	"github.com/viant/mcp/server"
 	"github.com/viant/mcp/server/auth"
-	"net/http/cookiejar"
 )
 
 const (
-	perCallAuthPort   = 8091
-	perCallServerPort = 4986
+	perCallAuthPort   = 8191
+	perCallServerPort = 4186
 )
 
 func Test_PerCallAuth(t *testing.T) {
@@ -193,13 +193,13 @@ func startServer() error {
 	return endpoint.ListenAndServe()
 }
 
-func getHttpTransport(ctx context.Context) (*sse.Client, error) {
+func getHttpTransport(ctx context.Context) (*streamable.Client, error) {
 	// Use auth RoundTripper so Authorization header can be injected from context per call.
 	rt, _ := authtransport.New()
 	httpClient := &http.Client{Transport: rt}
-	return sse.New(ctx, fmt.Sprintf("http://localhost:%d/sse", perCallServerPort),
-		sse.WithMessageHttpClient(httpClient),
-		sse.WithListener(func(m *jsonrpc.Message) {
+	return streamable.New(ctx, fmt.Sprintf("http://localhost:%d/sse", perCallServerPort),
+		streamable.WithHTTPClient(httpClient),
+		streamable.WithListener(func(m *jsonrpc.Message) {
 			// optional debug: b, _ := json.Marshal(m); fmt.Println(string(b))
 		}),
 	)
@@ -218,7 +218,7 @@ func getAuthHTTPClient() (*http.Client, error) {
 
 func authorizationService() (*auth.Service, error) {
 	policy := &authorization.Policy{
-		ExcludeURI: "/sse",
+		ExcludeURI: "/mcp",
 		Tools: map[string]*authorization.Authorization{
 			"terminal": {ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
 				Resource:             fmt.Sprintf("http://localhost:%d", perCallServerPort),

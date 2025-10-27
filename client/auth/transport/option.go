@@ -1,11 +1,11 @@
 package transport
 
 import (
+	"net/http"
+
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp/client/auth/store"
 	"github.com/viant/scy/auth/flow"
-	"net/http"
-	"time"
 )
 
 type Option func(*RoundTripper)
@@ -44,8 +44,8 @@ func WithAuthorizationExchangeHeader(name string) Option {
 	}
 }
 
-// WithCookieJar attaches a cookie jar to the auth RoundTripper so that
-// cookies are propagated on internal retries as well.
+// WithCookieJar attaches a cookie jar to the auth RoundTripper so that cookies
+// are applied to outbound requests and responses handled by the RoundTripper.
 func WithCookieJar(jar http.CookieJar) Option {
 	return func(t *RoundTripper) {
 		t.jar = jar
@@ -61,22 +61,5 @@ func WithTransport(rt http.RoundTripper) Option {
 		if rt != nil {
 			t.transport = rt
 		}
-	}
-}
-
-// WithIgnoreContextToken causes the transport to ignore any bearer
-// token present in the request context (i.e., force use of its own
-// token acquisition/refresh instead of per-call tokens).
-func WithIgnoreContextToken() Option {
-	return func(t *RoundTripper) {
-		t.ignoreCtxToken = true
-	}
-}
-
-// WithRejectCacheTTL sets how long a rejected context-provided token
-// remains suppressed after a 401. Default is 10 minutes.
-func WithRejectCacheTTL(ttl time.Duration) Option {
-	return func(t *RoundTripper) {
-		t.rejectTTL = ttl
 	}
 }
