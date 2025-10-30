@@ -3,7 +3,6 @@ package transport
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -172,7 +171,6 @@ func (j *FileJar) load() error {
 					Secure:   pc.Secure,
 					HttpOnly: pc.HttpOnly,
 				}})
-				fmt.Printf("[mcp/filejar] rehydrated hostless cookie name=%s to host=%s path=%s secure=%t from=%s\n", pc.Name, h, pc.Path, pc.Secure, j.path)
 			}
 			continue
 		}

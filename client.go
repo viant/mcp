@@ -117,7 +117,6 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 		if c.Auth.BackendForFrontend {
 			// build once and reuse across reconnects
 			if c.cachedAuthRT == nil {
-				fmt.Printf("[mcp/client] BFF enabled; building auth RT jar=%t\n", c.CookieJar != nil)
 				transportOpts := []authtransport.Option{authtransport.WithBackendForFrontendAuth()}
 				if c.Auth != nil && c.Auth.Store != nil {
 					transportOpts = append(transportOpts, authtransport.WithStore(c.Auth.Store))
@@ -141,7 +140,6 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			}
 			authRT = c.cachedAuthRT
 			httpClient = c.cachedHTTPClient
-			fmt.Printf("[mcp/client] BFF httpClient ready jar=%t\n", httpClient != nil && httpClient.Jar != nil)
 		} else if len(c.Auth.OAuth2ConfigURL) > 0 {
 			var err error
 			httpClient, err = c.getOAuthHTTPClient(ctx)
@@ -153,7 +151,6 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			if c.cachedAuthRT != nil {
 				authRT = c.cachedAuthRT
 			}
-			fmt.Printf("[mcp/client] OAuth2 httpClient ready jar=%t\n", httpClient != nil && httpClient.Jar != nil)
 		}
 	}
 
