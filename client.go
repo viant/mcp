@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/viant/jsonrpc/transport"
 	"github.com/viant/jsonrpc/transport/client/http/sse"
@@ -45,6 +46,11 @@ type ClientOptions struct {
 	// servers using cookies (e.g., BFF flows) can persist session cookies
 	// across reconnects and calls.
 	CookieJar http.CookieJar `yaml:"-" json:"-"`
+
+	// PingIntervalSeconds overrides the default background ping interval
+	// used to keep MCP sessions warm and detect transport failures.
+	// If <= 0, the default is used (currently 60 seconds).
+	PingIntervalSeconds int `yaml:"pingIntervalSeconds,omitempty" json:"pingIntervalSeconds,omitempty"`
 }
 
 // ClientAuth defines authentication options for an MCP client.
@@ -101,6 +107,12 @@ func NewClient(handler pclient.Handler, options *ClientOptions) (*client.Client,
 	opts := options.Options(authRT)
 	opts = append(opts, client.WithClientHandler(handler))
 	opts = append(opts, client.WithReconnect(dial))
+	// Keepalive ping: use configured interval if provided, else default 60 seconds.
+	pingEvery := 60
+	if options.PingIntervalSeconds > 0 {
+		pingEvery = options.PingIntervalSeconds
+	}
+	opts = append(opts, client.WithPingInterval(time.Duration(pingEvery)*time.Second))
 
 	cli := client.New(options.Name, options.Version, rpcTransport, opts...)
 	if _, err := cli.Initialize(ctx); err != nil {

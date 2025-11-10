@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
@@ -29,6 +31,11 @@ type Client struct {
 
 	// reconnect builds new transport and re-initialises handshake when the underlying session is lost.
 	reconnect func(ctx context.Context) (transport.Transport, error)
+
+	// background pinger
+	pingInterval time.Duration
+	pingStop     chan struct{}
+	pingWG       sync.WaitGroup
 }
 
 func (c *Client) isInitialized() bool {
@@ -72,6 +79,8 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 		return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to notify initialized: %v", err), nil)
 	}
 	c.initialized = true
+	// Start background pinger if configured
+	c.startPinger()
 	return &result, nil
 }
 
@@ -143,6 +152,50 @@ func (c *Client) reconnectAndInitialize(ctx context.Context) error {
 	c.initialized = false
 	_, err = c.Initialize(ctx)
 	return err
+}
+
+// startPinger launches a background goroutine that periodically sends MCP ping.
+// It stops when Close() is called. If ping fails, it attempts to reconnect.
+func (c *Client) startPinger() {
+	if c.pingInterval <= 0 {
+		return
+	}
+	if c.pingStop != nil {
+		return // already running
+	}
+	c.pingStop = make(chan struct{})
+	c.pingWG.Add(1)
+	go func() {
+		defer c.pingWG.Done()
+		ticker := time.NewTicker(c.pingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				// Use a detached context to avoid tying ping to caller deadlines
+				ctx := context.Background()
+				if !c.isInitialized() {
+					continue
+				}
+				_, err := c.Ping(ctx, &schema.PingRequestParams{})
+				if err != nil {
+					// Attempt reconnect and continue; ignore reconnect error here.
+					_ = c.reconnectAndInitialize(ctx)
+				}
+			case <-c.pingStop:
+				return
+			}
+		}
+	}()
+}
+
+// Close stops background routines (like pinger). It does not close underlying transports.
+func (c *Client) Close() {
+	if c.pingStop != nil {
+		close(c.pingStop)
+		c.pingWG.Wait()
+		c.pingStop = nil
+	}
 }
 
 func (c *Client) SetLevel(ctx context.Context, params *schema.SetLevelRequestParams, options ...RequestOption) (*schema.SetLevelResult, error) {

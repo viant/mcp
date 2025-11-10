@@ -7,6 +7,7 @@ import (
 	"github.com/viant/jsonrpc/transport"
 	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
+	"time"
 )
 
 type RequestOptions struct {
@@ -63,6 +64,15 @@ func WithClientHandler(handler pclient.Handler) Option {
 func WithProtocolVersion(version string) Option {
 	return func(c *Client) {
 		c.protocolVersion = version
+	}
+}
+
+// WithPingInterval enables a background pinger with the specified interval.
+// Set to a positive duration (e.g., 30*time.Second) to keep sessions warm
+// and detect/recover from transport issues. Zero or negative disables pinger.
+func WithPingInterval(interval time.Duration) Option {
+	return func(c *Client) {
+		c.pingInterval = interval
 	}
 }
 
