@@ -179,7 +179,11 @@ func (c *Client) startPinger() {
 				}
 				_, err := c.Ping(ctx, &schema.PingRequestParams{})
 				if err != nil {
-					// Attempt reconnect and continue; ignore reconnect error here.
+					// If server does not implement ping (-32601), disable pinger silently.
+					if rpcErr, ok := err.(*jsonrpc.Error); ok && rpcErr.Code == jsonrpc.MethodNotFound {
+						return
+					}
+					// Otherwise attempt reconnect and continue.
 					_ = c.reconnectAndInitialize(ctx)
 				}
 			case <-c.pingStop:
