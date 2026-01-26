@@ -37,7 +37,9 @@ func Usage_Example() {
 			if err != nil {
 				return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to marshal result: %v", err), nil)
 			}
-			return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{{Text: string(data)}}}, nil
+			return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{
+				schema.TextContent{Text: string(data), Type: "text"},
+			}}, nil
 		}); err != nil {
 			return err
 		}

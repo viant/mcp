@@ -84,23 +84,21 @@ func (h *rawHandler) Serve(ctx context.Context, req *jsonrpc.Request, resp *json
 		resp.Result = data
 	case schema.MethodToolsCall:
 		// Trigger an elicitation request to the client over the same transport.
-		elicit := &schema.ElicitRequest{
-			Params: schema.ElicitRequestParams{
-				ElicitationId: "el1",
-				Message:       "Provide email and code",
-				Mode:          string(schema.ElicitRequestParamsModeForm),
-				RequestedSchema: schema.ElicitRequestParamsRequestedSchema{
-					Type: "object",
-					Properties: map[string]interface{}{
-						"email": map[string]interface{}{"type": "string"},
-						"code":  map[string]interface{}{"type": "number"},
-					},
-					Required: []string{"email"},
+		params := schema.ElicitRequestParams{
+			ElicitationId: "el1",
+			Message:       "Provide email and code",
+			Mode:          string(schema.ElicitRequestParamsModeForm),
+			RequestedSchema: schema.ElicitRequestParamsRequestedSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"email": map[string]interface{}{"type": "string"},
+					"code":  map[string]interface{}{"type": "number"},
 				},
+				Required: []string{"email"},
 			},
 		}
 
-		call, _ := jsonrpc.NewRequest("elicitation/create", &elicit.Params)
+		call, _ := jsonrpc.NewRequest("elicitation/create", &params)
 		// Let the server generate a request id if supported
 		res, err := h.tr.Send(ctx, call)
 		if err != nil {

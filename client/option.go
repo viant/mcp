@@ -11,8 +11,9 @@ import (
 )
 
 type RequestOptions struct {
-	RequestId   jsonrpc.RequestId
-	StringToken string
+	RequestId      jsonrpc.RequestId
+	JsonrpcVersion string
+	StringToken    string
 }
 
 func NewRequestOptions(options []RequestOption) *RequestOptions {
@@ -28,6 +29,12 @@ type RequestOption func(*RequestOptions)
 func WithJsonRpcRequestId(requestId jsonrpc.RequestId) RequestOption {
 	return func(options *RequestOptions) {
 		options.RequestId = requestId
+	}
+}
+
+func WithJsonRpcVersion(version string) RequestOption {
+	return func(options *RequestOptions) {
+		options.JsonrpcVersion = version
 	}
 }
 

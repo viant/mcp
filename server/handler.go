@@ -114,7 +114,7 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 				IsError:           &isErr,
 				StructuredContent: structured,
 				Content: []schema.CallToolResultContentElem{
-					{Type: "text", Text: msg},
+					schema.TextContent{Text: msg, Type: "text"},
 				},
 			}
 			err = nil

@@ -205,6 +205,38 @@ h.RegisterResource(schema.Resource{Name: "hello", Uri: "/hello"},
 
 To notify clients about updates, emit `resources/updated` via `h.Notifier`.
 
+### Git-backed Resources
+
+Expose curated repository files by plugging in the `resource/git` helper:
+
+```go
+import resgit "github.com/viant/mcp/resource/git"
+
+cfg := &resgit.Config{
+  Repos: []resgit.Repo{
+    {
+      ID:                "mcp",
+      URL:               "https://github.com/viant/mcp.git",
+      Roots:             []string{"docs"},
+      Include:           []string{"**/*.md"},
+      ReadMeOnly:        true,
+      ExposeSnapshotZip: true,
+    },
+  },
+}
+
+proto.WithDefaultHandler(ctx, func(h *serverproto.DefaultHandler) error {
+  if err := resgit.Register(ctx, h, cfg); err != nil {
+    return err
+  }
+  return nil
+})
+```
+
+Clients can now call `resources/list` to discover URIs like `repo://mcp/docs/server_guide.md`
+and `resources/read` or `repo://mcp/snapshot.zip` to fetch either trimmed files or the exact
+snapshot zip (MD5 included via `_meta`).
+
 ### Add a Prompt
 
 Expose reusable prompt templates that clients can list and resolve.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/gosh"
@@ -36,43 +37,27 @@ import (
 
 func TestNew(t *testing.T) {
 	//t.Skip("Skipping clientauth example experimental tests until OAuth support is refactored")
-	go func() {
-		err := startAuthorizer()
-		if err != nil {
-			t.Error(err)
-		}
-	}()
-	go func() {
-		err := startServer()
-		if err != nil {
-			t.Error(err)
-		}
-	}()
+	authURL, authClose := startAuthorizer(t)
+	defer authClose()
+	mcpURL, mcpClose := startServer(t, authURL, false)
+	defer mcpClose()
 
-	time.Sleep(2 * time.Second)
-	err := runClient(t)
+	err := runClient(t, authURL, mcpURL)
 	assert.Nil(t, err)
 }
 
 func TestNew_StreamableHTTP(t *testing.T) {
 	// Use isolated ports to avoid clashes with SSE test
-	go func() {
-		if err := startAuthorizerStream(); err != nil {
-			t.Error(err)
-		}
-	}()
-	go func() {
-		if err := startServerStream(); err != nil {
-			t.Error(err)
-		}
-	}()
+	authURL, authClose := startAuthorizer(t)
+	defer authClose()
+	mcpURL, mcpClose := startServer(t, authURL, true)
+	defer mcpClose()
 
-	time.Sleep(2 * time.Second)
 	ctx := context.Background()
 
 	// RoundTripper for OAuth and Authorizer interceptor
 	// RoundTripper configured for the stream auth issuer
-	aStore := store.NewMemoryStore(store.WithClientConfig(mock.NewTestClient("http://localhost:8095")))
+	aStore := store.NewMemoryStore(store.WithClientConfig(mock.NewTestClient(authURL)))
 	jar, _ := cookiejar.New(nil)
 	rt, err := transport.New(
 		transport.WithStore(aStore),
@@ -83,7 +68,7 @@ func TestNew_StreamableHTTP(t *testing.T) {
 		return
 	}
 	httpClient := &http.Client{Transport: rt, Jar: jar}
-	transport, err := streamable.New(ctx, "http://localhost:4987/mcp",
+	transport, err := streamable.New(ctx, mcpURL+"/mcp",
 		streamable.WithHTTPClient(httpClient),
 		streamable.WithListener(func(message *jsonrpc.Message) {
 			data, err := json.Marshal(message)
@@ -124,23 +109,35 @@ func TestNew_StreamableHTTP(t *testing.T) {
 	}
 }
 
-// Streamable-specific authorizer/server on dedicated ports
-func startAuthorizerStream() error {
+func startAuthorizer(t *testing.T) (string, func()) {
+	t.Helper()
 	mockService, err := mock.NewAuthorizationService()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
-	mockService.Issuer = "http://localhost:8095"
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mockService.Issuer = "http://" + ln.Addr().String()
 	aServer := http.Server{}
-	aServer.Addr = "localhost:8095"
 	aServer.Handler = mockService.Handler()
-	return aServer.ListenAndServe()
+	go func() { _ = aServer.Serve(ln) }()
+	waitForTCP(t, ln.Addr().String())
+	return mockService.Issuer, func() { _ = aServer.Close() }
 }
 
-func startServerStream() error {
+func startServer(t *testing.T, authURL string, streamableHTTP bool) (string, func()) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpURL := "http://" + ln.Addr().String()
+
 	goshService, err := gosh.New(context.TODO(), local.New())
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	terminalTool := tool.NewTool(goshService)
 	newServer := serverproto.WithDefaultHandler(context.Background(), func(server *serverproto.DefaultHandler) error {
@@ -148,9 +145,9 @@ func startServerStream() error {
 		return nil
 	})
 
-	authService, err := authorizationServiceStream()
+	authService, err := authorizationService(authURL, mcpURL)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
 	var options = []server.Option{
@@ -160,37 +157,26 @@ func startServerStream() error {
 	}
 	srv, err := server.New(options...)
 	if err != nil {
-		return err
+		t.Fatal(err)
+	}
+	if streamableHTTP {
+		srv.UseStreamableHTTP(true)
 	}
 	ctx := context.Background()
-	endpoint := srv.HTTP(ctx, ":4987")
-	return endpoint.ListenAndServe()
+	endpoint := srv.HTTP(ctx, ln.Addr().String())
+	go func() { _ = endpoint.Serve(ln) }()
+	waitForTCP(t, ln.Addr().String())
+	return mcpURL, func() { _ = endpoint.Close() }
 }
 
-func authorizationServiceStream() (*auth.Service, error) {
-	policy := &authorization.Policy{
-		ExcludeURI: "/sse",
-		Tools: map[string]*authorization.Authorization{ //tool level
-			"terminal": &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
-				Resource: "http://localhost:4987",
-				AuthorizationServers: []string{
-					"http://localhost:8095/",
-				}},
-				RequiredScopes: []string{"openid", "profile", "email"},
-			},
-		},
-	}
-	return auth.New(&auth.Config{Policy: policy})
-}
-
-func runClient(t *testing.T) error {
+func runClient(t *testing.T, authURL, mcpURL string) error {
 	ctx := context.Background()
-	aTransport, err := getHttpTransport(ctx)
+	aTransport, err := getHttpTransport(ctx, authURL, mcpURL)
 	if err != nil {
 		return err
 	}
 
-	roundTripper, err := getRoundTripper()
+	roundTripper, err := getRoundTripper(authURL)
 	if err != nil {
 		return err
 	}
@@ -235,54 +221,11 @@ func runClient(t *testing.T) error {
 	return nil
 }
 
-func startAuthorizer() error {
-	mockService, err := mock.NewAuthorizationService()
-	if err != nil {
-		return err
-	}
-	mockService.Issuer = "http://localhost:8089"
-	aServer := http.Server{}
-	aServer.Addr = "localhost:8089"
-	aServer.Handler = mockService.Handler()
-	return aServer.ListenAndServe()
-
-}
-
-func startServer() error {
-	goshService, err := gosh.New(context.TODO(), local.New())
-	if err != nil {
-		return err
-	}
-	terminalTool := tool.NewTool(goshService)
-	NewServer := serverproto.WithDefaultHandler(context.Background(), func(server *serverproto.DefaultHandler) error {
-		serverproto.RegisterTool[*tool.TerminalCommand, *tool.CommandOutput](server.Registry, "terminal", "Run terminal commands", terminalTool.Call)
-		return nil
-	})
-
-	authService, err := authorizationService()
-	if err != nil {
-		return err
-	}
-
-	var options = []server.Option{
-		server.WithJRPCAuthorizer(authService.EnsureAuthorized),
-		server.WithNewHandler(NewServer),
-		server.WithImplementation(schema.Implementation{Name: "MCP Terminal", Version: "0.1"}),
-	}
-	srv, err := server.New(options...)
-	if err != nil {
-		return err
-	}
-	ctx := context.Background()
-	endpoint := srv.HTTP(ctx, ":4983")
-	return endpoint.ListenAndServe()
-}
-
-func getHttpTransport(ctx context.Context) (*sse.Client, error) {
-	roundTripper, err := getRoundTripper()
+func getHttpTransport(ctx context.Context, authURL, mcpURL string) (*sse.Client, error) {
+	roundTripper, err := getRoundTripper(authURL)
 	httpClient := &http.Client{Transport: roundTripper}
 
-	sseTransport, err := sse.New(ctx, "http://localhost:4983/sse",
+	sseTransport, err := sse.New(ctx, mcpURL+"/sse",
 		sse.WithMessageHttpClient(httpClient),
 		sse.WithListener(func(message *jsonrpc.Message) {
 			data, err := json.Marshal(message)
@@ -291,8 +234,8 @@ func getHttpTransport(ctx context.Context) (*sse.Client, error) {
 	return sseTransport, err
 }
 
-func getRoundTripper() (*transport.RoundTripper, error) {
-	aStore := store.NewMemoryStore(store.WithClientConfig(mock.NewTestClient("http://localhost:8089")))
+func getRoundTripper(authURL string) (*transport.RoundTripper, error) {
+	aStore := store.NewMemoryStore(store.WithClientConfig(mock.NewTestClient(authURL)))
 	jar, _ := cookiejar.New(nil)
 	roundTripper, err := transport.New(
 		transport.WithStore(aStore),
@@ -302,18 +245,35 @@ func getRoundTripper() (*transport.RoundTripper, error) {
 	return roundTripper, err
 }
 
-func authorizationService() (*auth.Service, error) {
+func authorizationService(authURL, resourceURL string) (*auth.Service, error) {
+	if resourceURL == "" {
+		resourceURL = "http://localhost"
+	}
 	policy := &authorization.Policy{
 		ExcludeURI: "/sse",
 		Tools: map[string]*authorization.Authorization{ //tool level
 			"terminal": &authorization.Authorization{ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
-				Resource: "http://localhost:4983",
+				Resource: resourceURL,
 				AuthorizationServers: []string{
-					"http://localhost:8089/",
+					authURL + "/",
 				}},
 				RequiredScopes: []string{"openid", "profile", "email"},
 			},
 		},
 	}
 	return auth.New(&auth.Config{Policy: policy})
+}
+
+func waitForTCP(t *testing.T, addr string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("timeout waiting for %s", addr)
 }

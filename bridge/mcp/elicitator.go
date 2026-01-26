@@ -81,14 +81,18 @@ func (e *Elicitator) OpenURL(u string) {
 }
 
 func (e *Elicitator) Start(ctx context.Context, req *schema.ElicitRequest) (string, <-chan *schema.ElicitResult, error) {
+	params := elicitationParams(req)
+	if params == nil {
+		return "", nil, fmt.Errorf("missing elicitation params")
+	}
 	if err := e.ensureServer(ctx); err != nil {
 		return "", nil, err
 	}
 	ch := make(chan *schema.ElicitResult, 1)
 	e.mu.Lock()
-	e.sessions[req.Params.ElicitationId] = ch
+	e.sessions[params.ElicitationId] = ch
 	e.mu.Unlock()
-	u := fmt.Sprintf("%s/elicit?id=%s", e.baseURL, url.QueryEscape(req.Params.ElicitationId))
+	u := fmt.Sprintf("%s/elicit?id=%s", e.baseURL, url.QueryEscape(params.ElicitationId))
 	e.OpenURL(u)
 	return u, ch, nil
 }
@@ -266,6 +270,57 @@ func parseNumber(s string) (float64, error) {
 	return f, err
 }
 
+func elicitationParams(req *schema.ElicitRequest) *schema.ElicitRequestParams {
+	if req == nil {
+		return nil
+	}
+	switch v := req.ElicitRequestParamsInline.(type) {
+	case schema.ElicitRequestParams:
+		return &v
+	case *schema.ElicitRequestParams:
+		return v
+	case schema.ElicitRequestFormParams:
+		params := schema.ElicitRequestParams{
+			Message:         v.Message,
+			Mode:            string(schema.ElicitRequestParamsModeForm),
+			RequestedSchema: schema.ElicitRequestParamsRequestedSchema(v.RequestedSchema),
+		}
+		return &params
+	case *schema.ElicitRequestFormParams:
+		if v == nil {
+			return nil
+		}
+		params := schema.ElicitRequestParams{
+			Message:         v.Message,
+			Mode:            string(schema.ElicitRequestParamsModeForm),
+			RequestedSchema: schema.ElicitRequestParamsRequestedSchema(v.RequestedSchema),
+		}
+		return &params
+	case schema.ElicitRequestURLParams:
+		params := schema.ElicitRequestParams{
+			Meta:          (*schema.URLElicitRequestParamsMeta)(v.Meta),
+			ElicitationId: v.ElicitationId,
+			Message:       v.Message,
+			Mode:          v.Mode,
+			Url:           v.Url,
+		}
+		return &params
+	case *schema.ElicitRequestURLParams:
+		if v == nil {
+			return nil
+		}
+		params := schema.ElicitRequestParams{
+			Meta:          (*schema.URLElicitRequestParamsMeta)(v.Meta),
+			ElicitationId: v.ElicitationId,
+			Message:       v.Message,
+			Mode:          v.Mode,
+			Url:           v.Url,
+		}
+		return &params
+	}
+	return nil
+}
+
 // opsAugmented wraps Operations and injects a built-in elicitator when needed.
 type opsAugmented struct {
 	protoClient.Operations
@@ -286,7 +341,9 @@ func (o *opsAugmented) Init(ctx context.Context, capabilities *schema.ClientCapa
 	o.Operations.Init(ctx, capabilities)
 	if o.el != nil {
 		if capabilities.Elicitation == nil {
-			capabilities.Elicitation = map[string]interface{}{"supported": true}
+			capabilities.Elicitation = &schema.ClientCapabilitiesElicitation{
+				Form: map[string]interface{}{"supported": true},
+			}
 		}
 	}
 }
@@ -295,17 +352,21 @@ func (o *opsAugmented) Elicit(ctx context.Context, request *jsonrpc.TypedRequest
 	if o.Operations.Implements(schema.MethodElicitationCreate) || o.el == nil {
 		return o.Operations.Elicit(ctx, request)
 	}
+	params := elicitationParams(request.Request)
+	if params == nil {
+		return nil, jsonrpc.NewInvalidParamsError("missing elicitation params", nil)
+	}
 	// build query for UI rendering
 	q := url.Values{}
-	q.Set("id", request.Request.Params.ElicitationId)
-	q.Set("message", request.Request.Params.Message)
-	if request.Request.Params.Mode != "" {
-		q.Set("mode", request.Request.Params.Mode)
+	q.Set("id", params.ElicitationId)
+	q.Set("message", params.Message)
+	if params.Mode != "" {
+		q.Set("mode", params.Mode)
 	}
-	if request.Request.Params.Url != "" {
-		q.Set("url", request.Request.Params.Url)
+	if params.Url != "" {
+		q.Set("url", params.Url)
 	}
-	for name, raw := range request.Request.Params.RequestedSchema.Properties {
+	for name, raw := range params.RequestedSchema.Properties {
 		typ := "string"
 		title := name
 		if m, ok := raw.(map[string]interface{}); ok {
@@ -318,7 +379,7 @@ func (o *opsAugmented) Elicit(ctx context.Context, request *jsonrpc.TypedRequest
 		}
 		q.Add("prop", fmt.Sprintf("%s:%s:%s", name, typ, title))
 	}
-	for _, r := range request.Request.Params.RequestedSchema.Required {
+	for _, r := range params.RequestedSchema.Required {
 		q.Add("required", r)
 	}
 

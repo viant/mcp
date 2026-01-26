@@ -57,6 +57,9 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 		if ro.RequestId != nil {
 			req.Id = ro.RequestId
 		}
+		if ro.JsonrpcVersion != "" {
+			req.Jsonrpc = ro.JsonrpcVersion
+		}
 		if ro.StringToken != "" {
 			// For stdio transport, inject _meta; for HTTP transports, use Bearer header only.
 			if isStdio(c.transport) {
@@ -251,12 +254,15 @@ func New(name, version string, transport transport.Transport, options ...Option)
 			ret.capabilities.Roots = &schema.ClientCapabilitiesRoots{}
 		}
 		if ret.clientHandler.Implements(schema.MethodElicitationCreate) {
-			ret.capabilities.Elicitation = map[string]interface{}{
-				"supported": true,
+			ret.capabilities.Elicitation = &schema.ClientCapabilitiesElicitation{
+				Form: map[string]interface{}{"supported": true},
 			}
 		}
 		if ret.clientHandler.Implements(schema.MethodSamplingCreateMessage) {
-			ret.capabilities.Sampling = make(map[string]interface{})
+			ret.capabilities.Sampling = &schema.ClientCapabilitiesSampling{
+				Context: map[string]interface{}{},
+				Tools:   map[string]interface{}{},
+			}
 		}
 	}
 	return ret
@@ -285,6 +291,9 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 		if ro.RequestId != nil {
 			req.Id = ro.RequestId
 		}
+		if ro.JsonrpcVersion != "" {
+			req.Jsonrpc = ro.JsonrpcVersion
+		}
 		if ro.StringToken != "" {
 			if isStdio(client.transport) {
 				req = withAuthMeta(req, ro.StringToken)
@@ -304,6 +313,9 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 				if ro := NewRequestOptions(options); ro != nil {
 					if ro.RequestId != nil {
 						req.Id = ro.RequestId
+					}
+					if ro.JsonrpcVersion != "" {
+						req.Jsonrpc = ro.JsonrpcVersion
 					}
 					if ro.StringToken != "" {
 						if isStdio(client.transport) {

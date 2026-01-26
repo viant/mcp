@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/viant/gosh"
 	"github.com/viant/gosh/runner/local"
 	"github.com/viant/jsonrpc"
+	"github.com/viant/jsonrpc/transport/client/http/sse"
 	streamable "github.com/viant/jsonrpc/transport/client/http/streamable"
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
@@ -30,39 +32,21 @@ import (
 	"github.com/viant/mcp/server/auth"
 )
 
-const (
-	perCallAuthPort   = 8191
-	perCallServerPort = 4186
-)
-
 func Test_PerCallAuth(t *testing.T) {
-	go func() {
-		if err := startAuthorizer(); err != nil {
-			t.Error(err)
-		}
-	}()
-	go func() {
-		if err := startServer(); err != nil {
-			t.Error(err)
-		}
-	}()
-	time.Sleep(1500 * time.Millisecond)
-	err := runClient(t)
+	authURL, authClose := startAuthorizer(t)
+	defer authClose()
+	mcpURL, mcpClose := startServer(t, authURL)
+	defer mcpClose()
+
+	err := runClient(t, authURL, mcpURL)
 	assert.Nil(t, err)
 }
 
 func Test_PerCallAuth_StreamableHTTP(t *testing.T) {
-	go func() {
-		if err := startAuthorizer(); err != nil {
-			t.Error(err)
-		}
-	}()
-	go func() {
-		if err := startServer(); err != nil {
-			t.Error(err)
-		}
-	}()
-	time.Sleep(1500 * time.Millisecond)
+	authURL, authClose := startAuthorizer(t)
+	defer authClose()
+	mcpURL, mcpClose := startServer(t, authURL)
+	defer mcpClose()
 
 	ctx := context.Background()
 	// streamable HTTP transport with auth RoundTripper (per-call token via options)
@@ -71,7 +55,7 @@ func Test_PerCallAuth_StreamableHTTP(t *testing.T) {
 		return
 	}
 
-	transport, err := streamable.New(ctx, fmt.Sprintf("http://localhost:%d/mcp", perCallServerPort), streamable.WithHTTPClient(tr))
+	transport, err := streamable.New(ctx, mcpURL+"/mcp", streamable.WithHTTPClient(tr))
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -84,7 +68,7 @@ func Test_PerCallAuth_StreamableHTTP(t *testing.T) {
 	assert.Equal(t, "MCP Terminal", initRes.ServerInfo.Name)
 
 	// Acquire access token and use per-call option
-	token, err := obtainAccessToken(fmt.Sprintf("http://localhost:%d", perCallAuthPort))
+	token, err := obtainAccessToken(authURL)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -109,10 +93,10 @@ func Test_PerCallAuth_StreamableHTTP(t *testing.T) {
 	}
 }
 
-func runClient(t *testing.T) error {
+func runClient(t *testing.T, authURL, mcpURL string) error {
 	ctx := context.Background()
 	// Plain HTTP client; auth is supplied per call via options
-	tr, err := getHttpTransport(ctx)
+	tr, err := getHttpTransport(ctx, mcpURL)
 	if err != nil {
 		return err
 	}
@@ -125,7 +109,7 @@ func runClient(t *testing.T) error {
 	assert.Equal(t, "MCP Terminal", initRes.ServerInfo.Name)
 
 	// Acquire an access token from the mock authorization server
-	token, err := obtainAccessToken(fmt.Sprintf("http://localhost:%d", perCallAuthPort))
+	token, err := obtainAccessToken(authURL)
 	if !assert.NoError(t, err) {
 		return err
 	}
@@ -152,20 +136,34 @@ func runClient(t *testing.T) error {
 	return nil
 }
 
-func startAuthorizer() error {
+func startAuthorizer(t *testing.T) (string, func()) {
+	t.Helper()
 	svc, err := mock.NewAuthorizationService()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
-	svc.Issuer = fmt.Sprintf("http://localhost:%d", perCallAuthPort)
-	httpServer := &http.Server{Addr: fmt.Sprintf("localhost:%d", perCallAuthPort), Handler: svc.Handler()}
-	return httpServer.ListenAndServe()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Issuer = "http://" + ln.Addr().String()
+	httpServer := &http.Server{Handler: svc.Handler()}
+	go func() { _ = httpServer.Serve(ln) }()
+	waitForTCP(t, ln.Addr().String())
+	return svc.Issuer, func() { _ = httpServer.Close() }
 }
 
-func startServer() error {
+func startServer(t *testing.T, authURL string) (string, func()) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpURL := "http://" + ln.Addr().String()
+
 	goshService, err := gosh.New(context.TODO(), local.New())
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	terminalTool := tool.NewTool(goshService)
 	newHandler := serverproto.WithDefaultHandler(context.Background(), func(h *serverproto.DefaultHandler) error {
@@ -173,9 +171,9 @@ func startServer() error {
 		return nil
 	})
 
-	authSvc, err := authorizationService()
+	authSvc, err := authorizationService(authURL, mcpURL)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
 	opts := []server.Option{
@@ -186,20 +184,22 @@ func startServer() error {
 	}
 	srv, err := server.New(opts...)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	ctx := context.Background()
-	endpoint := srv.HTTP(ctx, fmt.Sprintf(":%d", perCallServerPort))
-	return endpoint.ListenAndServe()
+	endpoint := srv.HTTP(ctx, ln.Addr().String())
+	go func() { _ = endpoint.Serve(ln) }()
+	waitForTCP(t, ln.Addr().String())
+	return mcpURL, func() { _ = endpoint.Close() }
 }
 
-func getHttpTransport(ctx context.Context) (*streamable.Client, error) {
+func getHttpTransport(ctx context.Context, mcpURL string) (*sse.Client, error) {
 	// Use auth RoundTripper so Authorization header can be injected from context per call.
 	rt, _ := authtransport.New()
 	httpClient := &http.Client{Transport: rt}
-	return streamable.New(ctx, fmt.Sprintf("http://localhost:%d/sse", perCallServerPort),
-		streamable.WithHTTPClient(httpClient),
-		streamable.WithListener(func(m *jsonrpc.Message) {
+	return sse.New(ctx, mcpURL+"/sse",
+		sse.WithMessageHttpClient(httpClient),
+		sse.WithListener(func(m *jsonrpc.Message) {
 			// optional debug: b, _ := json.Marshal(m); fmt.Println(string(b))
 		}),
 	)
@@ -216,13 +216,13 @@ func getAuthHTTPClient() (*http.Client, error) {
 	return &http.Client{Transport: rt, Jar: jar}, nil
 }
 
-func authorizationService() (*auth.Service, error) {
+func authorizationService(authURL, mcpURL string) (*auth.Service, error) {
 	policy := &authorization.Policy{
 		ExcludeURI: "/mcp",
 		Tools: map[string]*authorization.Authorization{
 			"terminal": {ProtectedResourceMetadata: &meta.ProtectedResourceMetadata{
-				Resource:             fmt.Sprintf("http://localhost:%d", perCallServerPort),
-				AuthorizationServers: []string{fmt.Sprintf("http://localhost:%d/", perCallAuthPort)},
+				Resource:             mcpURL,
+				AuthorizationServers: []string{authURL + "/"},
 			}, RequiredScopes: []string{"openid", "profile", "email"}},
 		},
 	}
@@ -254,4 +254,18 @@ func obtainAccessToken(issuer string) (string, error) {
 		return "", err
 	}
 	return data.AccessToken, nil
+}
+
+func waitForTCP(t *testing.T, addr string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("timeout waiting for %s", addr)
 }

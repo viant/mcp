@@ -19,7 +19,7 @@ func TestServerAsClient(t *testing.T) {
 
 	srv, err := New(
 		WithNewHandler(NewServer),
-		WithImplementation(schema.Implementation{"TestServer", "1.0"}),
+		WithImplementation(schema.Implementation{Name: "TestServer", Version: "1.0"}),
 	)
 	assert.NoError(t, err)
 	assert.NotNil(t, srv)

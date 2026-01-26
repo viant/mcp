@@ -11,7 +11,7 @@ import (
 // ListPrompts handles the prompts/list method
 func (h *Handler) ListPrompts(ctx context.Context, request *jsonrpc.Request) (*schema.ListPromptsResult, *jsonrpc.Error) {
 	listPromptsRequest := &schema.ListPromptsRequest{Method: schema.MethodPromptsList}
-	if err := json.Unmarshal(request.Params, &listPromptsRequest.Params); err != nil {
+	if err := json.Unmarshal(request.Params, &listPromptsRequest.PaginatedRequestParamsInline); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %h", err), request.Params)
 	}
 	id, _ := jsonrpc.AsRequestIntId(request.Id)

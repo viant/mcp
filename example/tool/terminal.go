@@ -62,9 +62,7 @@ func (t *TerminalTool) Call(ctx context.Context, input *TerminalCommand) (*schem
 		return nil, jsonrpc.NewInternalError(err.Error(), []byte(cmdString))
 	}
 	result.Content = []schema.CallToolResultContentElem{
-		{
-			Text: string(data),
-		},
+		schema.TextContent{Text: string(data), Type: "text"},
 	}
 	return result, nil
 }

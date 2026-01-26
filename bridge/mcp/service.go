@@ -72,6 +72,9 @@ func (d *dynamicHandler) OnNotification(ctx context.Context, notification *jsonr
 
 type Service struct {
 	downstream transport.Transport
+	url        string
+	streamable bool
+	httpClient *http.Client
 	// remoteHandler forwards upstream server->client RPCs to the current downstream client connection.
 	remoteHandler *dynamicHandler
 	elicitator    *Elicitator
@@ -82,6 +85,7 @@ type clientImplementer struct {
 	endpoint   client.Interface
 	downstream transport.Transport
 	protocol   string
+	reconnect  func(ctx context.Context) (transport.Transport, error)
 	// clientOps represents downstream client Operations (backchannel)
 	clientOps protoClient.Operations
 	// clientHandler adapts Operations to pclient.Handler for inbound upstream requests
@@ -97,6 +101,7 @@ func (ci *clientImplementer) Initialize(ctx context.Context, init *schema.Initia
 	ci.endpoint = client.New("proxy", "0.1", ci.downstream,
 		client.WithProtocolVersion(init.ProtocolVersion),
 		client.WithClientHandler(ci.clientHandler),
+		client.WithReconnect(ci.reconnect),
 		client.WithCapabilities(schema.ClientCapabilities{Experimental: map[string]map[string]interface{}{}}))
 	res, err := ci.endpoint.Initialize(ctx)
 	if err != nil {
@@ -117,7 +122,11 @@ func (ci *clientImplementer) ListResources(ctx context.Context, request *jsonrpc
 
 // ListResourceTemplates proxies the resources/templates/list request.
 func (ci *clientImplementer) ListResourceTemplates(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListResourceTemplatesRequest]) (*schema.ListResourceTemplatesResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.ListResourceTemplates(ctx, request.Request.Params.Cursor)
+	var cursor *string
+	if request.Request != nil && request.Request.PaginatedRequestParamsInline != nil {
+		cursor = request.Request.PaginatedRequestParamsInline.Cursor
+	}
+	res, err := ci.endpoint.ListResourceTemplates(ctx, cursor)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -153,7 +162,11 @@ func (ci *clientImplementer) Unsubscribe(ctx context.Context, request *jsonrpc.T
 
 // ListPrompts proxies the prompts/list request.
 func (ci *clientImplementer) ListPrompts(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListPromptsRequest]) (*schema.ListPromptsResult, *jsonrpc.Error) {
-	res, err := ci.endpoint.ListPrompts(ctx, request.Request.Params.Cursor)
+	var cursor *string
+	if request.Request != nil && request.Request.PaginatedRequestParamsInline != nil {
+		cursor = request.Request.PaginatedRequestParamsInline.Cursor
+	}
+	res, err := ci.endpoint.ListPrompts(ctx, cursor)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
@@ -264,7 +277,8 @@ func New(ctx context.Context, cfg *Options) (*Service, error) {
 
 	// Autodetect remote transport (Streamable vs SSE)
 	var downstream transport.Transport
-	if isStreamable(ctx, cfg.URL, httpClient) {
+	isStream := isStreamable(ctx, cfg.URL, httpClient)
+	if isStream {
 		opts := []streamable.Option{streamable.WithHandler(dh)}
 		if httpClient != nil {
 			opts = append(opts, streamable.WithHTTPClient(httpClient))
@@ -287,7 +301,30 @@ func New(ctx context.Context, cfg *Options) (*Service, error) {
 	if cfg.ElicitatorEnabled {
 		el = NewElicitator(cfg.ElicitatorListenAddr, cfg.ElicitatorOpenBrowser)
 	}
-	return &Service{downstream: downstream, remoteHandler: dh, elicitator: el}, nil
+	return &Service{
+		downstream:    downstream,
+		url:           cfg.URL,
+		streamable:    isStream,
+		httpClient:    httpClient,
+		remoteHandler: dh,
+		elicitator:    el,
+	}, nil
+}
+
+func (s *Service) reconnect(ctx context.Context) (transport.Transport, error) {
+	if s.streamable {
+		opts := []streamable.Option{streamable.WithHandler(s.remoteHandler)}
+		if s.httpClient != nil {
+			opts = append(opts, streamable.WithHTTPClient(s.httpClient))
+		}
+		return streamable.New(ctx, s.url, opts...)
+	}
+
+	opts := []sse.Option{sse.WithHandler(s.remoteHandler)}
+	if s.httpClient != nil {
+		opts = append(opts, sse.WithHttpClient(s.httpClient), sse.WithMessageHttpClient(s.httpClient))
+	}
+	return sse.New(ctx, s.url, opts...)
 }
 
 // isStreamable tests remote URL for Streamable HTTP transport by attempting a POST initialize handshake.
@@ -355,7 +392,12 @@ func (s *Service) HTTP(ctx context.Context, addr string) (*http.Server, error) {
 		}
 		handler := &opsHandler{Operations: wrapped}
 		s.remoteHandler.SetInner(client.NewHandler(handler))
-		impl := &clientImplementer{downstream: s.downstream, clientOps: wrapped, clientHandler: handler}
+		impl := &clientImplementer{
+			downstream:    s.downstream,
+			reconnect:     s.reconnect,
+			clientOps:     wrapped,
+			clientHandler: handler,
+		}
 		return impl, nil
 	}
 	// create a server with our proxy implementer
@@ -377,7 +419,12 @@ func (s *Service) Stdio(ctx context.Context) (*stdiosrv.Server, error) {
 		}
 		handler := &opsHandler{Operations: wrapped}
 		s.remoteHandler.SetInner(client.NewHandler(handler))
-		impl := &clientImplementer{downstream: s.downstream, clientOps: wrapped, clientHandler: handler}
+		impl := &clientImplementer{
+			downstream:    s.downstream,
+			reconnect:     s.reconnect,
+			clientOps:     wrapped,
+			clientHandler: handler,
+		}
 		return impl, nil
 	}
 	srv, err := mcpserver.New(

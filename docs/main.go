@@ -37,7 +37,7 @@ func main() {
 				return &schema.CallToolResult{
 					StructuredContent: structured,
 					Content: []schema.CallToolResultContentElem{
-						{Text: string(data), Type: "text"}},
+						schema.TextContent{Text: string(data), Type: "text"}},
 				}, nil
 			},
 		)

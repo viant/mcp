@@ -69,7 +69,18 @@ func (c *Client) Elicit(ctx context.Context, request *jsonrpc.TypedRequest[*sche
 		request.Id = c.NextRequestId()
 	}
 	request.Method = schema.MethodElicitationCreate
-	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, schema.MethodElicitationCreate, request.Id, &request.Request.Params)
+	params := schema.ElicitRequestParams{}
+	if request.Request != nil {
+		switch v := request.Request.ElicitRequestParamsInline.(type) {
+		case schema.ElicitRequestParams:
+			params = v
+		case *schema.ElicitRequestParams:
+			if v != nil {
+				params = *v
+			}
+		}
+	}
+	return send[schema.ElicitRequestParams, schema.ElicitResult](ctx, c, schema.MethodElicitationCreate, request.Id, &params)
 }
 
 // send marshals parameters, sends the request and unmarshals the result.

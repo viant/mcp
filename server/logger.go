@@ -60,7 +60,7 @@ func (l *Logger) Warning(ctx context.Context, data interface{}) error {
 }
 
 func (l *Logger) Error(ctx context.Context, data interface{}) error {
-	return l.log(ctx, schema.Error, data)
+	return l.log(ctx, schema.Err, data)
 }
 
 func (l *Logger) Critical(ctx context.Context, data interface{}) error {

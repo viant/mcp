@@ -1,10 +1,12 @@
-package client
+package client_test
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/jsonrpc"
@@ -12,24 +14,27 @@ import (
 	"github.com/viant/jsonrpc/transport/client/stdio"
 	"github.com/viant/mcp-protocol/schema"
 	schema2 "github.com/viant/mcp-protocol/schema/2025-06-18"
+	serverproto "github.com/viant/mcp-protocol/server"
+	"github.com/viant/mcp/client"
+	"github.com/viant/mcp/server"
 )
 
 func TestClient(t *testing.T) {
-	//t.Skip("Skipping stdio clientHandler tests after protocol refactor")
 	ctx := context.Background()
-	//transport, err := getStdioTransport(ctx)
-	transport, err := getHttpTransport(ctx)
+	addr, shutdown := startTestServer(t, ctx)
+	defer shutdown()
+
+	transport, err := getHttpTransport(ctx, "http://"+addr+"/sse")
 	if err != nil {
 		t.Fatalf("Failed to create transport: %v", err)
-		return
 	}
 
 	// Create a new clientHandler
-	client := New("datly", "0.1", transport, WithCapabilities(schema.ClientCapabilities{
+	client := client.New("datly", "0.1", transport, client.WithCapabilities(schema.ClientCapabilities{
 		Experimental: make(map[string]map[string]any),
 		Roots:        &schema.ClientCapabilitiesRoots{},
-		Sampling:     make(map[string]any),
-		Elicitation:  map[string]any{},
+		Sampling:     &schema.ClientCapabilitiesSampling{},
+		Elicitation:  &schema.ClientCapabilitiesElicitation{},
 	}))
 	result, err := client.Initialize(ctx)
 
@@ -65,8 +70,8 @@ func getStdioTransport(ctx context.Context) (*stdio.Client, error) {
 	return transport, err
 }
 
-func getHttpTransport(ctx context.Context) (*sse.Client, error) {
-	transport, err := sse.New(ctx, "http://localhost:7788/sse",
+func getHttpTransport(ctx context.Context, rawURL string) (*sse.Client, error) {
+	transport, err := sse.New(ctx, rawURL,
 		sse.WithHandler(&transportHandler{}),
 		sse.WithListener(func(message *jsonrpc.Message) {
 			data, _ := json.Marshal(message)
@@ -79,7 +84,7 @@ type transportHandler struct{}
 
 func (h *transportHandler) Serve(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response) {
 	switch request.Method {
-	case methodElicit:
+	case "elicitation/create":
 		response.Id = request.Id
 		response.Jsonrpc = request.Jsonrpc
 		result := &schema2.ElicitResult{
@@ -93,6 +98,48 @@ func (h *transportHandler) Serve(ctx context.Context, request *jsonrpc.Request, 
 		response.Result = json.RawMessage(data)
 	}
 }
+
 func (h *transportHandler) OnNotification(ctx context.Context, notification *jsonrpc.Notification) {
 
+}
+
+func startTestServer(t *testing.T, ctx context.Context) (string, func()) {
+	t.Helper()
+	handler := serverproto.WithDefaultHandler(ctx, func(h *serverproto.DefaultHandler) error {
+		type ToolInput struct {
+			Top int `json:"Top"`
+		}
+		type ToolOutput struct {
+			Count int `json:"count"`
+		}
+		return serverproto.RegisterTool[*ToolInput, *ToolOutput](h.Registry, "outlookListMail", "List mail", func(ctx context.Context, input *ToolInput) (*schema.CallToolResult, *jsonrpc.Error) {
+			out := &ToolOutput{Count: input.Top}
+			data, err := json.Marshal(out)
+			if err != nil {
+				return nil, jsonrpc.NewInternalError(err.Error(), nil)
+			}
+			return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{
+				schema.TextContent{Text: string(data), Type: "text"},
+			}}, nil
+		})
+	})
+	srv, err := server.New(
+		server.WithNewHandler(handler),
+		server.WithImplementation(schema.Implementation{Name: "test", Version: "0.1"}),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to listen: %v", err)
+	}
+	httpSrv := srv.HTTP(ctx, ln.Addr().String())
+	go func() { _ = httpSrv.Serve(ln) }()
+	return ln.Addr().String(), func() {
+		_ = httpSrv.Close()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_ = httpSrv.Shutdown(shutdownCtx)
+		cancel()
+	}
 }
