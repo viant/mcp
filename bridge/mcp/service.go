@@ -123,8 +123,8 @@ func (ci *clientImplementer) ListResources(ctx context.Context, request *jsonrpc
 // ListResourceTemplates proxies the resources/templates/list request.
 func (ci *clientImplementer) ListResourceTemplates(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListResourceTemplatesRequest]) (*schema.ListResourceTemplatesResult, *jsonrpc.Error) {
 	var cursor *string
-	if request.Request != nil && request.Request.PaginatedRequestParamsInline != nil {
-		cursor = request.Request.PaginatedRequestParamsInline.Cursor
+	if request.Request != nil && request.Request.PaginatedRequestParams != nil {
+		cursor = request.Request.PaginatedRequestParams.Cursor
 	}
 	res, err := ci.endpoint.ListResourceTemplates(ctx, cursor)
 	if err != nil {
@@ -163,8 +163,8 @@ func (ci *clientImplementer) Unsubscribe(ctx context.Context, request *jsonrpc.T
 // ListPrompts proxies the prompts/list request.
 func (ci *clientImplementer) ListPrompts(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListPromptsRequest]) (*schema.ListPromptsResult, *jsonrpc.Error) {
 	var cursor *string
-	if request.Request != nil && request.Request.PaginatedRequestParamsInline != nil {
-		cursor = request.Request.PaginatedRequestParamsInline.Cursor
+	if request.Request != nil && request.Request.PaginatedRequestParams != nil {
+		cursor = request.Request.PaginatedRequestParams.Cursor
 	}
 	res, err := ci.endpoint.ListPrompts(ctx, cursor)
 	if err != nil {

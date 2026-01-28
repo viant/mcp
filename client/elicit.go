@@ -15,7 +15,7 @@ func (h *Handler) Elicit(ctx context.Context, request *jsonrpc.Request) (*schema
 	if err := json.Unmarshal(request.Params, &params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	elicitReq.ElicitRequestParamsInline = params
+	elicitReq.ElicitRequestParams = params
 	id, _ := jsonrpc.AsRequestIntId(request.Id)
 	return h.handler.Elicit(ctx, &jsonrpc.TypedRequest[*schema.ElicitRequest]{Request: elicitReq, Id: uint64(id)})
 }

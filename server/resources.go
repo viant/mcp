@@ -22,7 +22,7 @@ func (h *Handler) ListResources(ctx context.Context, request *jsonrpc.Request) (
 // ListResourceTemplates handles the resources/templates/list method
 func (h *Handler) ListResourceTemplates(ctx context.Context, request *jsonrpc.Request) (*schema.ListResourceTemplatesResult, *jsonrpc.Error) {
 	listTemplatesRequest := &schema.ListResourceTemplatesRequest{Method: schema.MethodResourcesTemplatesList}
-	if err := json.Unmarshal(request.Params, &listTemplatesRequest.PaginatedRequestParamsInline); err != nil {
+	if err := json.Unmarshal(request.Params, &listTemplatesRequest.PaginatedRequestParams); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
 	id, _ := jsonrpc.AsRequestIntId(request.Id)

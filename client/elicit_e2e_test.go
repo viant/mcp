@@ -87,7 +87,7 @@ func (h *rawHandler) Serve(ctx context.Context, req *jsonrpc.Request, resp *json
 		params := schema.ElicitRequestParams{
 			ElicitationId: "el1",
 			Message:       "Provide email and code",
-			Mode:          string(schema.ElicitRequestParamsModeForm),
+			Mode:          schema.ElicitRequestParamsModeForm,
 			RequestedSchema: schema.ElicitRequestParamsRequestedSchema{
 				Type: "object",
 				Properties: map[string]interface{}{

@@ -274,51 +274,8 @@ func elicitationParams(req *schema.ElicitRequest) *schema.ElicitRequestParams {
 	if req == nil {
 		return nil
 	}
-	switch v := req.ElicitRequestParamsInline.(type) {
-	case schema.ElicitRequestParams:
-		return &v
-	case *schema.ElicitRequestParams:
-		return v
-	case schema.ElicitRequestFormParams:
-		params := schema.ElicitRequestParams{
-			Message:         v.Message,
-			Mode:            string(schema.ElicitRequestParamsModeForm),
-			RequestedSchema: schema.ElicitRequestParamsRequestedSchema(v.RequestedSchema),
-		}
-		return &params
-	case *schema.ElicitRequestFormParams:
-		if v == nil {
-			return nil
-		}
-		params := schema.ElicitRequestParams{
-			Message:         v.Message,
-			Mode:            string(schema.ElicitRequestParamsModeForm),
-			RequestedSchema: schema.ElicitRequestParamsRequestedSchema(v.RequestedSchema),
-		}
-		return &params
-	case schema.ElicitRequestURLParams:
-		params := schema.ElicitRequestParams{
-			Meta:          (*schema.URLElicitRequestParamsMeta)(v.Meta),
-			ElicitationId: v.ElicitationId,
-			Message:       v.Message,
-			Mode:          v.Mode,
-			Url:           v.Url,
-		}
-		return &params
-	case *schema.ElicitRequestURLParams:
-		if v == nil {
-			return nil
-		}
-		params := schema.ElicitRequestParams{
-			Meta:          (*schema.URLElicitRequestParamsMeta)(v.Meta),
-			ElicitationId: v.ElicitationId,
-			Message:       v.Message,
-			Mode:          v.Mode,
-			Url:           v.Url,
-		}
-		return &params
-	}
-	return nil
+	params := req.ElicitRequestParams
+	return &params
 }
 
 // opsAugmented wraps Operations and injects a built-in elicitator when needed.
@@ -361,7 +318,7 @@ func (o *opsAugmented) Elicit(ctx context.Context, request *jsonrpc.TypedRequest
 	q.Set("id", params.ElicitationId)
 	q.Set("message", params.Message)
 	if params.Mode != "" {
-		q.Set("mode", params.Mode)
+		q.Set("mode", string(params.Mode))
 	}
 	if params.Url != "" {
 		q.Set("url", params.Url)
