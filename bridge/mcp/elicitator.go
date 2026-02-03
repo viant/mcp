@@ -274,7 +274,7 @@ func elicitationParams(req *schema.ElicitRequest) *schema.ElicitRequestParams {
 	if req == nil {
 		return nil
 	}
-	params := req.ElicitRequestParams
+	params := req.Params
 	return &params
 }
 
