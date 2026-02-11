@@ -45,6 +45,9 @@ func (c *Client) NextRequestId() uint64 {
 }
 
 func (c *Client) ListRoots(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListRootsRequest]) (*schema.ListRootsResult, *jsonrpc.Error) {
+	if !c.Implements(schema.MethodRootsList) {
+		return nil, jsonrpc.NewMethodNotFound("method: roots/list not implemented by client", nil)
+	}
 	if request.Id == 0 {
 		request.Id = c.NextRequestId()
 	}
@@ -54,6 +57,9 @@ func (c *Client) ListRoots(ctx context.Context, request *jsonrpc.TypedRequest[*s
 
 // CreateMessage creates a sampling message on the client side.
 func (c *Client) CreateMessage(ctx context.Context, request *jsonrpc.TypedRequest[*schema.CreateMessageRequest]) (*schema.CreateMessageResult, *jsonrpc.Error) {
+	if !c.Implements(schema.MethodSamplingCreateMessage) {
+		return nil, jsonrpc.NewMethodNotFound("method: sampling/createMessage not implemented by client", nil)
+	}
 	if request.Id == 0 {
 		request.Id = c.NextRequestId()
 	}
@@ -65,6 +71,9 @@ func (c *Client) CreateMessage(ctx context.Context, request *jsonrpc.TypedReques
 
 // Elicit asks the client to elicit additional information from the user.
 func (c *Client) Elicit(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ElicitRequest]) (*schema.ElicitResult, *jsonrpc.Error) {
+	if !c.Implements(schema.MethodElicitationCreate) {
+		return nil, jsonrpc.NewMethodNotFound("method: elicitation/create not implemented by client", nil)
+	}
 	if request.Id == 0 {
 		request.Id = c.NextRequestId()
 	}
