@@ -2,7 +2,7 @@
 
 MCP is a Go implementation of the Model Context Protocol — a standardized way for applications to communicate with AI models. It allows developers to seamlessly bridge applications and AI models using a lightweight, JSON-RPC–based protocol.
 
-This repository contains the shared protocol definitions and schemas for MCP. It is used by [MCP](github.com/viant/mcp), which provides the actual implementation of the MCP server and client framework.
+This repository provides the Go MCP client/server runtime, bridge, and auth helpers. Protocol definitions and schemas live in [mcp-protocol](https://github.com/viant/mcp-protocol).
 
 [Official Model Context Protocol Specification](https://modelcontextprotocol.io/introduction)
 
@@ -25,6 +25,7 @@ Key features:
 - Client-side features:
   - Roots
   - Sampling
+  - Elicitation
 
 
 ## Architecture
@@ -33,6 +34,7 @@ For detailed guides on custom server implementations and authentication, see [do
 
 MCP is built around the following components:
 
+1. **Transport**: JSON-RPC over HTTP/SSE, streamable HTTP, or stdio
 2. **Server**: Handles incoming requests and dispatches to the protocol implementation
 3. **Client**: Makes requests to MCP-compatible servers
 4. **Protocol Implementation (server.Handler)**: Provides the actual functionality behind each protocol method
@@ -56,15 +58,15 @@ graph LR
 
 ```bash
 go get github.com/viant/mcp
+```
 
 If you just need to connect **existing tools** to a remote MCP server you might prefer to use the standalone **Bridge** binary instead of embedding the Go package.  See [Bridge Guide](docs/bridge.md) for details.
-```
 
 ### Creating a Server
 
 #### Quick Start: Default Server
 
-[DefaultHandler](github.com/viant/mcp-protocol/server/handler.go) can be used to quickly set up an MCP server.
+[DefaultHandler](https://github.com/viant/mcp-protocol/blob/main/server/handler.go) can be used to quickly set up an MCP server.
 It provides no-op stubs for all methods, allowing you to focus on implementing only the methods you need.
 Register handlers inline without writing a custom server type:
 
@@ -125,7 +127,7 @@ func main() {
 
   srv, err := server.New(
     server.WithNewHandler(newHandler),
-    server.WithImplementation(schema.Implementation{"default", "1.0"}),
+    server.WithImplementation(schema.Implementation{Name: "default", Version: "1.0"}),
   )
   if err != nil {
     log.Fatalf("Failed to create server: %v", err)
@@ -256,7 +258,7 @@ See the Server Guide for deeper coverage of resources and prompts.
 - **Server Guide (Tools, Resources, Prompts)**: [docs/server_guide.md](docs/server_guide.md)
 - **Authentication Guide**: [docs/authentication.md](docs/authentication.md)
 - **Bridge (local proxy) Guide**: [docs/bridge.md](docs/bridge.md)
- - **Client Guide**: [docs/client.md](docs/client.md)
+- **Client Guide**: [docs/client.md](docs/client.md)
  
 ### Creating a Client
 
@@ -333,7 +335,7 @@ MCP supports transport-agnostic authentication and authorization (HTTP or HTTP-S
         transport.WithAuthFlow(flow.NewBrowserFlow()),
     )
     httpClient := &http.Client{Transport: rt}
-    sseTransport, _ := sse.New(ctx, "https://myapp.example.com/sse", sse.WithClient(httpClient))
+    sseTransport, _ := sse.New(ctx, "https://myapp.example.com/sse", sse.WithHttpClient(httpClient))
     mcpClient := client.New("MyClient", "1.0", sseTransport, client.WithCapabilities(schema.ClientCapabilities{}))
     ```
 
@@ -360,9 +362,9 @@ MCP supports the following Server Side methods:
 MCP supports the following Client Side methods:
 
 - `roots/list` - List available roots
-- `sampling/createMessage` - A standardized way for servers to request LLM sampling (“completions” or “generations”) from language models via clients.
-- `elicitation/create` - Ask the client to perform an elicitation (model completion) using provided prompts.
-- `interaction/create` - Initiate a user-interaction request, allowing the server to prompt the user via the client UI.
+  - `sampling/createMessage` - A standardized way for servers to request LLM sampling (“completions” or “generations”) from language models via clients.
+  - `elicitation/create` - Ask the client to collect additional user input (forms or external links) and return structured content.
+  - `interaction/create` - Initiate a user-interaction request, allowing the server to prompt the user via the client UI.
 
  
 ## Contributing

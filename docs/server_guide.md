@@ -32,7 +32,7 @@ func main() {
 
     srv, err := server.New(
         server.WithNewHandler(newHandler),
-        server.WithImplementation(schema.Implementation{"example", "tile", "1.0"}),
+        server.WithImplementation(schema.Implementation{Name: "example", Version: "1.0"}),
     )
     if err != nil {
         log.Fatal(err)

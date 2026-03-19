@@ -108,7 +108,7 @@ func ExampleSpecBasedClient() {
     httpClient := &http.Client{Transport: rt}
 
     // 5. Create an SSE transport that uses the OAuth2-enabled HTTP client
-    sseTransport, err := sse.New(ctx, "https://myapp.example.com/sse", sse.WithClient(httpClient))
+    sseTransport, err := sse.New(ctx, "https://myapp.example.com/sse", sse.WithHttpClient(httpClient))
     if err != nil {
         log.Fatal(err)
     }
@@ -124,7 +124,7 @@ func ExampleSpecBasedClient() {
 }
 ```
 
-## 2. Fine-Grained Tool/Resource Control (Experimental) as (discussed above)[https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/483]
+## 2. Fine-Grained Tool/Resource Control (Experimental) (see discussion: [modelcontextprotocol/modelcontextprotocol#483](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/483))
 
 The experimental fine-grained mode lets you protect individual tools or resources with custom scopes or authorization servers.
 
@@ -136,15 +136,15 @@ Build an `auth.Service` from the policy and wire its handlers into the server wi
 import (
     "context"
     "log"
-    auth "github.com/viant/mcp-protocol/oauth2/auth"
+
     "github.com/viant/mcp/server"
-    "github.com/viant/mcp/server/auth"
+    serverauth "github.com/viant/mcp/server/auth"
+    "github.com/viant/mcp-protocol/authorization"
     "github.com/viant/mcp-protocol/oauth2/meta"
     "github.com/viant/mcp-protocol/schema"
 )
 
 func main() {
-    // Map each tool name to its authorization metadata
     // Map each tool name to its authorization metadata
     toolAuth := map[string]*authorization.Authorization{
         "terminal": {
@@ -155,14 +155,14 @@ func main() {
             // Optional: RequiredScopes: []string{"resource.read"},
         },
     }
-    authCfg := &auth.Config{
+    policy := &authorization.Policy{
         ExcludeURI: "/sse",
         Tools:      toolAuth,
     }
     srv, err := server.New(
         // Build auth service from the policy
         func() (opts []server.Option) {
-            authSrv, _ := auth.New(&auth.Config{Policy: authCfg})
+            authSrv, _ := serverauth.New(&serverauth.Config{Policy: policy})
             opts = append(opts,
                 server.WithProtectedResourcesHandler(authSrv.ProtectedResourcesHandler),
                 server.WithAuthorizer(authSrv.Middleware),
@@ -251,7 +251,7 @@ func main() {
         log.Fatal(err)
     }
     httpClient := &http.Client{Transport: rt}
-    sseTransport, _ := sse.New(ctx, "http://localhost:4981/sse", sse.WithClient(httpClient))
+    sseTransport, _ := sse.New(ctx, "http://localhost:4981/sse", sse.WithHttpClient(httpClient))
 
     // Attach the experimental interceptor
     authorizer := auth.Authorizer{Transport: rt}
@@ -270,22 +270,22 @@ func main() {
 
 ## Accessing Token in Server Implementation
 
-When implementing MCP services, you can access the authentication token from the context in your server methods. The token is stored in the context using the `auth.TokenKey` key and contains an instance of the `auth.Token` struct (from `github.com/viant/mcp-protocol/oauth2/auth`).
+When implementing MCP services, you can access the authentication token from the context in your server methods. The token is stored in the context using the `authorization.TokenKey` key and contains an instance of the `authorization.Token` struct (from `github.com/viant/mcp-protocol/authorization`).
 
 ```go
-import auth "github.com/viant/mcp-protocol/oauth2/auth"
+import "github.com/viant/mcp-protocol/authorization"
 
 // Retrieve the token from the context
-tokenValue := ctx.Value(auth.TokenKey)
+tokenValue := ctx.Value(authorization.TokenKey)
 if tokenValue != nil {
     // Cast to the Token struct
-    authToken, ok := tokenValue.(auth.Token)
+    authToken, ok := tokenValue.(authorization.Token)
     if ok {
         // Access the token string
         tokenString := authToken.Token
 
         // Use the token for authorization checks, logging, etc.
-       // log.Printf("Request authenticated with token: %s", tokenString)
+        // log.Printf("Request authenticated with token: %s", tokenString)
 
         // You can also pass the token to other services
         // or use it to make authorized requests to other APIs
@@ -298,14 +298,14 @@ if tokenValue != nil {
 Here's a complete example showing how to access and use the token in a server method:
 
 ```go
-import auth "github.com/viant/mcp-protocol/authorization"
+import "github.com/viant/mcp-protocol/authorization"
 
 func (i *MyServer) CallTool(ctx context.Context, request *schema.CallToolRequest) (*schema.CallToolResult, *jsonrpc.Error) {
     // Access the token from the context
     tokenValue := ctx.Value(authorization.TokenKey)
     if tokenValue != nil {
         // You can log the token for debugging
-        authToken, ok := tokenValue.(auth.Token)
+        authToken, ok := tokenValue.(authorization.Token)
         if ok {
             // Use the token for your implementation logic
             // For example, you might want to validate permissions based on the token
@@ -334,7 +334,7 @@ func hasPermission(token, toolName string) bool {
 
 ## Securing the MCP Client
 
-Wire OAuth2 into your MCP client transport using the provided auth packages, and attach a fine-can you grained interceptor for resource/tool-level control:
+Wire OAuth2 into your MCP client transport using the provided auth packages, and attach a fine-grained interceptor for resource/tool-level control:
 ```go
 import (
     "context"
@@ -355,7 +355,7 @@ func ExampleOAuth2Client() {
     clientConfig := &oauth2.Config{...}// OAuth2 client config
 
 // 1. Create an in-memory store with OAuth2 client credentials.
-    store := store.NewMemoryStore(store.WithClient(oauthConfig))
+    store := store.NewMemoryStore(store.WithClientConfig(clientConfig))
 
     // 2. Build an OAuth2-enabled RoundTripper using PKCE flow.
     rt, err := transport.New(
@@ -370,7 +370,7 @@ func ExampleOAuth2Client() {
     httpClient := &http.Client{Transport: rt}
 
     // 4. Create an SSE transport that uses the OAuth2-enabled HTTP client.
-    sseTransport, err := sse.New(ctx, "http://myapp.example.com/sse", sse.WithClient(httpClient))
+    sseTransport, err := sse.New(ctx, "http://myapp.example.com/sse", sse.WithHttpClient(httpClient))
     if err != nil {
         log.Fatal(err)
     }

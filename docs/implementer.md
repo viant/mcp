@@ -105,7 +105,7 @@ func main() {
 	newHandler := custom.New(config)
 	srv, err := server.New(
 		server.WithNewHandler(newHandler),
-		server.WithImplementation(schema.Implementation{"custom", "1.0"}),
+		server.WithImplementation(schema.Implementation{Name: "custom", Version: "1.0"}),
 	)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)

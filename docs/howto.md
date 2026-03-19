@@ -110,54 +110,18 @@ srv, _ := mcp.New(
 )
 ```
 
-### Reference Projects (packaged examples)
+### Examples (in this repo)
 
-Each example is structured with a `service` package and a `cmd/server` main:
+Examples live under `example/` and can be executed with `go test ./example/...`:
 
-- Tools-only server:
-  - Usecase: `docs/guide/tools_basic/usecase`
-  - Server: `docs/guide/tools_basic/server`
-  - Main: `docs/guide/tools_basic/cmd/server`
-  - Run: `go run ./docs/guide/tools_basic/cmd/server`
+- Tools: `example/tool` (used by `example/example_test.go`)
+- Resources: `example/resource` and `example/fs`
+- Custom handler: `example/custom`
+- Auth flows: `example/auth/experimental`, `example/auth/percall`, `example/auth/term`
 
-- Resources-only server:
-  - Usecase: `docs/guide/resources/usecase`
-  - Server: `docs/guide/resources/server`
-  - Main: `docs/guide/resources/cmd/server`
-  - Run: `go run ./docs/guide/resources/cmd/server`
+For a quick smoke test, run:
 
-- Prompts-only server:
-  - Usecase: `docs/guide/prompts/usecase`
-  - Server: `docs/guide/prompts/server`
-  - Main: `docs/guide/prompts/cmd/server`
-  - Run: `go run ./docs/guide/prompts/cmd/server`
-
-- Full server (tools + resources + prompts):
-  - Usecase: `docs/guide/full/usecase`
-  - Server: `docs/guide/full/server`
-  - Main: `docs/guide/full/cmd/server`
-  - Run: `go run ./docs/guide/full/cmd/server`
-
-- Tools (advanced): rich tagging + elicitation
-  - Usecase: `docs/guide/tools_advanced/usecase`
-  - Server: `docs/guide/tools_advanced/server`
-  - Main: `docs/guide/tools_advanced/cmd/server`
-  - Run: `go run ./docs/guide/tools_advanced/cmd/server`
-  - Shows: `choice`, `format:email`, `format:uri`, `description`, `required:true`, `omitempty`, `internal:"true"`, nested objects, arrays, maps, and a second tool that elicits missing fields from the client.
-
-- Tools (sampling): translate via CreateMessage
-  - Usecase: `docs/guide/tools_sampling/usecase`
-  - Server: `docs/guide/tools_sampling/server`
-  - Main: `docs/guide/tools_sampling/cmd/server`
-  - Run: `go run ./docs/guide/tools_sampling/cmd/server`
-  - Shows: server-initiated `sampling/createMessage` via client, using `SystemPrompt` and user message content.
-
-- Auth (HTTP-level): protected tools via OAuth2/OIDC
-  - Usecase: `docs/guide/auth_http/usecase`
-  - Server: `docs/guide/auth_http/server`
-  - Main: `docs/guide/auth_http/cmd/server`
-  - Run: `go run ./docs/guide/auth_http/cmd/server`
-  - Shows: `server.WithProtectedResourcesHandler` and `server.WithAuthorizer` with a `Policy.Global` protected resource. Clients must present `Authorization: Bearer ...`, or use the provided RoundTripper to acquire tokens.
+    go test ./example/...
 
 ## Calling Your Tool
 

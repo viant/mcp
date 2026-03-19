@@ -55,10 +55,13 @@ type ClientOptions struct {
 
 // ClientAuth defines authentication options for an MCP client.
 type ClientAuth struct {
-	OAuth2ConfigURL    []string `yaml:"oauth2ConfigURL,omitempty" json:"oauth2ConfigURL,omitempty"  short:"c" long:"config" description:"oauth2 config file"`
-	EncryptionKey      string   `yaml:"encryptionKey,omitempty" json:"encryptionKey,omitempty"  short:"k" long:"key" description:"encryption key"`
-	UseIdToken         bool     `yaml:"useIdToken,omitempty" json:"useIdToken,omitempty"`
-	BackendForFrontend bool     `yaml:"backendForFrontend,omitempty" json:"backendForFrontend,omitempty"  short:"b" long:"backend-for-frontend" description:"use backend for frontend"`
+	OAuth2ConfigURL []string `yaml:"oauth2ConfigURL,omitempty" json:"oauth2ConfigURL,omitempty"  short:"c" long:"config" description:"oauth2 config file"`
+	EncryptionKey   string   `yaml:"encryptionKey,omitempty" json:"encryptionKey,omitempty"  short:"k" long:"key" description:"encryption key"`
+	UseIdToken      bool     `yaml:"useIdToken,omitempty" json:"useIdToken,omitempty"`
+	// BackendForFrontend enables BFF auth mode. When nil (not configured),
+	// defaults to true if an auth RoundTripper is injected via SetAuthTransport.
+	// Set explicitly to false to disable BFF and use standard OAuth2 flow.
+	BackendForFrontend *bool `yaml:"backendForFrontend,omitempty" json:"backendForFrontend,omitempty"  short:"b" long:"backend-for-frontend" description:"use backend for frontend"`
 
 	// Store allows injecting a persistent token store so tokens survive
 	// across multiple client instances (e.g., per-user cache in caller).
@@ -83,10 +86,31 @@ type ClientTransportHTTP struct {
 	URL string `yaml:"url" json:"url"  short:"u" long:"url" description:"mcp url"`
 }
 
+func boolPtr(v bool) *bool { return &v }
+
 func (c *ClientOptions) Init() {
 	if c.Name == "" {
 		c.Name = "MCPClient"
 		c.Version = "0.1"
+	}
+}
+
+// SetAuthTransport injects a pre-built auth RoundTripper and HTTP client
+// into the options so that getTransport reuses them instead of building new
+// ones. This is the safe way for managers to inject per-user auth without
+// leaking the internal cachedAuthRT/cachedHTTPClient fields.
+func (c *ClientOptions) SetAuthTransport(rt *authtransport.RoundTripper, httpClient *http.Client) {
+	if c == nil || rt == nil {
+		return
+	}
+	c.cachedAuthRT = rt
+	c.cachedHTTPClient = httpClient
+	// Default to BFF mode when not explicitly configured — the standard
+	// pattern for web UI contexts. Respects explicit false.
+	if c.Auth == nil {
+		c.Auth = &ClientAuth{BackendForFrontend: boolPtr(true)}
+	} else if c.Auth.BackendForFrontend == nil && len(c.Auth.OAuth2ConfigURL) == 0 {
+		c.Auth.BackendForFrontend = boolPtr(true)
 	}
 }
 
@@ -125,8 +149,13 @@ func NewClient(handler pclient.Handler, options *ClientOptions) (*client.Client,
 func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handler) (transport.Transport, *authtransport.RoundTripper, error) {
 	var httpClient *http.Client
 	var authRT *authtransport.RoundTripper
-	if c.Auth != nil {
-		if c.Auth.BackendForFrontend {
+	// If a pre-built auth transport was injected via SetAuthTransport, reuse it
+	// regardless of which Auth branch applies (BFF, OAuth2, or none).
+	if c.cachedAuthRT != nil && c.cachedHTTPClient != nil {
+		authRT = c.cachedAuthRT
+		httpClient = c.cachedHTTPClient
+	} else if c.Auth != nil {
+		if c.Auth.BackendForFrontend != nil && *c.Auth.BackendForFrontend {
 			// build once and reuse across reconnects
 			if c.cachedAuthRT == nil {
 				transportOpts := []authtransport.Option{authtransport.WithBackendForFrontendAuth()}
@@ -250,7 +279,7 @@ func (c *ClientOptions) getOAuthHTTPClient(ctx context.Context) (*http.Client, e
 	if c.CookieJar != nil {
 		transportOpts = append(transportOpts, authtransport.WithCookieJar(c.CookieJar))
 	}
-	if c.Auth.BackendForFrontend {
+	if c.Auth.BackendForFrontend != nil && *c.Auth.BackendForFrontend {
 		transportOpts = append([]authtransport.Option{authtransport.WithBackendForFrontendAuth()}, transportOpts...)
 	}
 	if c.Auth.UseIdToken {
