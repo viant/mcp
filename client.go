@@ -63,6 +63,13 @@ type ClientAuth struct {
 	// Set explicitly to false to disable BFF and use standard OAuth2 flow.
 	BackendForFrontend *bool `yaml:"backendForFrontend,omitempty" json:"backendForFrontend,omitempty"  short:"b" long:"backend-for-frontend" description:"use backend for frontend"`
 
+	// PassUserToken controls whether the logged-in user's auth token is
+	// forwarded to this MCP server. When nil (not configured), defaults to
+	// true — the app user's token is sent as Bearer on the first probe so
+	// MCP servers sharing the same IDP can authenticate without a separate
+	// OAuth flow. Set explicitly to false to disable token forwarding.
+	PassUserToken *bool `yaml:"passUserToken,omitempty" json:"passUserToken,omitempty" description:"forward logged-in user token to MCP server"`
+
 	// Store allows injecting a persistent token store so tokens survive
 	// across multiple client instances (e.g., per-user cache in caller).
 	Store store.Store `yaml:"-" json:"-"`
@@ -87,6 +94,18 @@ type ClientTransportHTTP struct {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+// ShouldPassUserToken reports whether the logged-in user's token should be
+// forwarded to this MCP server. Defaults to true when not configured.
+func (c *ClientAuth) ShouldPassUserToken() bool {
+	if c == nil {
+		return true
+	}
+	if c.PassUserToken == nil {
+		return true
+	}
+	return *c.PassUserToken
+}
 
 func (c *ClientOptions) Init() {
 	if c.Name == "" {
