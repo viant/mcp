@@ -17,6 +17,7 @@ import (
 	"github.com/viant/jsonrpc"
 	protoClient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
+	"github.com/viant/mcp/internal/debuglog"
 )
 
 type Elicitator struct {
@@ -67,7 +68,7 @@ func (e *Elicitator) ensureServer(ctx context.Context) error {
 
 func (e *Elicitator) OpenURL(u string) {
 	if !e.openBrowser {
-		log.Printf("Elicitator: open %s", u)
+		debuglog.Printf("Elicitator: open %s", u)
 		return
 	}
 	// best-effort open default browser for macOS/Linux/Windows

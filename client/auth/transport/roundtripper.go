@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -15,6 +14,7 @@ import (
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
 	"github.com/viant/mcp/client/auth/store"
+	"github.com/viant/mcp/internal/debuglog"
 	"github.com/viant/scy/auth/flow"
 	"golang.org/x/oauth2"
 )
@@ -41,7 +41,6 @@ func (r *RoundTripper) Store() store.Store {
 }
 
 func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	log.Printf("[auth-rt] RoundTrip called url=%q useBFF=%v", req.URL.String(), r.useBFF)
 	// 1) First, send the request; if ctx carries an explicit token, attach it.
 	probe := clone(req)
 
@@ -78,7 +77,7 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, nil
 	}
 	// Close the prior body so we don’t leak.
-	log.Printf("[auth-rt] 401 received url=%q useBFF=%v wwwAuth=%q", req.URL.String(), r.useBFF, resp.Header.Get("WWW-Authenticate"))
+	debuglog.Printf("[auth-rt] 401 url=%q useBFF=%v", req.URL.String(), r.useBFF)
 	resp.Body.Close()
 
 	ctx := req.Context()
