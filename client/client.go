@@ -143,6 +143,9 @@ func (c *Client) Unsubscribe(ctx context.Context, params *schema.UnsubscribeRequ
 
 // reconnectAndInitialize attempts to rebuild underlying transport using reconnect callback.
 // It returns error if reconnect function is not configured or initialization fails.
+// The previous transport is closed (best-effort) before being replaced so that
+// long-lived background goroutines (e.g. streamable SSE readers) do not leak
+// across reconnects.
 func (c *Client) reconnectAndInitialize(ctx context.Context) error {
 	if c.reconnect == nil {
 		return fmt.Errorf("reconnect is not configured")
@@ -150,6 +153,13 @@ func (c *Client) reconnectAndInitialize(ctx context.Context) error {
 	newTransport, err := c.reconnect(ctx)
 	if err != nil {
 		return err
+	}
+	if old := c.transport; old != nil && old != newTransport {
+		if closer, ok := old.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		} else if closer, ok := old.(interface{ Close() }); ok {
+			closer.Close()
+		}
 	}
 	c.transport = newTransport
 	c.initialized = false
@@ -196,12 +206,23 @@ func (c *Client) startPinger() {
 	}()
 }
 
-// Close stops background routines (like pinger). It does not close underlying transports.
+// Close stops background routines (like pinger) and closes the underlying
+// transport when it implements io.Closer-like semantics. Closing the
+// transport is required for HTTP streaming transports whose long-lived SSE
+// goroutines would otherwise leak (see github.com/viant/jsonrpc streamable
+// Client.Close).
 func (c *Client) Close() {
 	if c.pingStop != nil {
 		close(c.pingStop)
 		c.pingWG.Wait()
 		c.pingStop = nil
+	}
+	if t := c.transport; t != nil {
+		if closer, ok := t.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		} else if closer, ok := t.(interface{ Close() }); ok {
+			closer.Close()
+		}
 	}
 }
 
