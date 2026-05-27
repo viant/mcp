@@ -26,6 +26,25 @@ import (
 	"github.com/viant/mcp/client"
 )
 
+type contextAuthHeaderTransport struct {
+	base http.RoundTripper
+}
+
+func (t *contextAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	token, _ := req.Context().Value(authtransport.ContextAuthTokenKey).(string)
+	if token == "" || req.Header.Get("Authorization") != "" {
+		return base.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	clone.Header = req.Header.Clone()
+	clone.Header.Set("Authorization", "Bearer "+token)
+	return base.RoundTrip(clone)
+}
+
 // ClientOptions
 //
 // defines options for configuring an MCP client.
@@ -135,7 +154,16 @@ func (c *ClientOptions) SetAuthTransport(rt *authtransport.RoundTripper, httpCli
 
 // NewClient creates an MCP client with transport and authorization configured via ClientOptions.
 func NewClient(handler pclient.Handler, options *ClientOptions) (*client.Client, error) {
-	ctx := context.Background()
+	return NewClientWithContext(context.Background(), handler, options)
+}
+
+// NewClientWithContext creates an MCP client and runs the initial handshake with
+// the supplied context so per-request auth tokens and other caller state are
+// available during Initialize.
+func NewClientWithContext(ctx context.Context, handler pclient.Handler, options *ClientOptions) (*client.Client, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	// Build initial transport and capture a factory for future reconnects.
 	dial := func(ctx context.Context) (transport.Transport, error) {
 		t, _, err := options.getTransport(ctx, handler)
@@ -213,6 +241,12 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			}
 		}
 	}
+	if httpClient == nil && c.CookieJar != nil {
+		httpClient = &http.Client{Jar: c.CookieJar}
+	}
+	if httpClient != nil {
+		httpClient = wrapContextAuthHTTPClient(httpClient)
+	}
 
 	clientHandler := client.NewHandler(handler)
 	switch c.Transport.Type {
@@ -260,6 +294,15 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 	default:
 		return nil, authRT, fmt.Errorf("no transport configured")
 	}
+}
+
+func wrapContextAuthHTTPClient(client *http.Client) *http.Client {
+	if client == nil {
+		return nil
+	}
+	clone := *client
+	clone.Transport = &contextAuthHeaderTransport{base: client.Transport}
+	return &clone
 }
 
 // getOAuthHTTPClient constructs an HTTP client with OAuth2 transport.

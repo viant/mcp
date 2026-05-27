@@ -28,6 +28,8 @@ type Client struct {
 	initialized     bool
 	clientHandler   pclient.Handler
 	authInterceptor *auth.Authorizer
+	stateMu         sync.RWMutex
+	reconnectMu     sync.Mutex
 
 	// reconnect builds new transport and re-initialises handshake when the underlying session is lost.
 	reconnect func(ctx context.Context) (transport.Transport, error)
@@ -39,10 +41,15 @@ type Client struct {
 }
 
 func (c *Client) isInitialized() bool {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
 	return c.initialized
 }
 
 func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*schema.InitializeResult, error) {
+	c.stateMu.RLock()
+	currentTransport := c.transport
+	c.stateMu.RUnlock()
 	params := &schema.InitializeRequestParams{
 		Capabilities:    c.capabilities,
 		ClientInfo:      c.info,
@@ -62,13 +69,13 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 		}
 		if ro.StringToken != "" {
 			// For stdio transport, inject _meta; for HTTP transports, use Bearer header only.
-			if isStdio(c.transport) {
+			if isStdio(currentTransport) {
 				req = withAuthMeta(req, ro.StringToken)
 			}
 			ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
 		}
 	}
-	response, err := c.transport.Send(ctx, req)
+	response, err := currentTransport.Send(ctx, req)
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), req.Params)
 	}
@@ -77,11 +84,13 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to unmarshal InitializeResult: %v", err), nil)
 	}
-	err = c.transport.Notify(ctx, &jsonrpc.Notification{Method: schema.MethodNotificationInitialized})
+	err = currentTransport.Notify(ctx, &jsonrpc.Notification{Method: schema.MethodNotificationInitialized})
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to notify initialized: %v", err), nil)
 	}
+	c.stateMu.Lock()
 	c.initialized = true
+	c.stateMu.Unlock()
 	// Start background pinger if configured
 	c.startPinger()
 	return &result, nil
@@ -147,6 +156,8 @@ func (c *Client) Unsubscribe(ctx context.Context, params *schema.UnsubscribeRequ
 // long-lived background goroutines (e.g. streamable SSE readers) do not leak
 // across reconnects.
 func (c *Client) reconnectAndInitialize(ctx context.Context) error {
+	c.reconnectMu.Lock()
+	defer c.reconnectMu.Unlock()
 	if c.reconnect == nil {
 		return fmt.Errorf("reconnect is not configured")
 	}
@@ -154,16 +165,48 @@ func (c *Client) reconnectAndInitialize(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if old := c.transport; old != nil && old != newTransport {
+	c.stateMu.Lock()
+	oldTransport := c.transport
+	c.transport = newTransport
+	c.initialized = false
+	c.stateMu.Unlock()
+	if old := oldTransport; old != nil && old != newTransport {
 		if closer, ok := old.(interface{ Close() error }); ok {
 			_ = closer.Close()
 		} else if closer, ok := old.(interface{ Close() }); ok {
 			closer.Close()
 		}
 	}
-	c.transport = newTransport
-	c.initialized = false
 	_, err = c.Initialize(ctx)
+	return err
+}
+
+func (c *Client) ensureInitialized(ctx context.Context) error {
+	if c.isInitialized() {
+		return nil
+	}
+	c.reconnectMu.Lock()
+	defer c.reconnectMu.Unlock()
+	if c.isInitialized() {
+		return nil
+	}
+	c.stateMu.RLock()
+	hasTransport := c.transport != nil
+	c.stateMu.RUnlock()
+	if !hasTransport {
+		if c.reconnect == nil {
+			return errUninitialized
+		}
+		newTransport, err := c.reconnect(ctx)
+		if err != nil {
+			return err
+		}
+		c.stateMu.Lock()
+		c.transport = newTransport
+		c.initialized = false
+		c.stateMu.Unlock()
+	}
+	_, err := c.Initialize(ctx)
 	return err
 }
 
@@ -300,10 +343,15 @@ func WithAuthInterceptor(authorizer *auth.Authorizer) Option {
 
 func send[P any, R any](ctx context.Context, client *Client, method string, parameters *P, options ...RequestOption) (*R, error) {
 	if !client.isInitialized() { //ensure initialized
-		return nil, jsonrpc.NewInternalError(errUninitialized.Error(), nil)
+		if err := client.ensureInitialized(ctx); err != nil {
+			return nil, jsonrpc.NewInternalError(err.Error(), nil)
+		}
 	}
 	// always use the latest transport on the client to avoid using
 	// a stale transport after reconnect
+	client.stateMu.RLock()
+	activeTransport := client.transport
+	client.stateMu.RUnlock()
 	req, err := jsonrpc.NewRequest(method, parameters)
 	if err != nil {
 		return nil, jsonrpc.NewInvalidRequest(err.Error(), nil)
@@ -316,14 +364,14 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 			req.Jsonrpc = ro.JsonrpcVersion
 		}
 		if ro.StringToken != "" {
-			if isStdio(client.transport) {
+			if isStdio(activeTransport) {
 				req = withAuthMeta(req, ro.StringToken)
 			}
 			ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
 		}
 	}
 	// Send initial request
-	response, err := client.transport.Send(ctx, req)
+	response, err := activeTransport.Send(ctx, req)
 	if err != nil {
 		// Automatic session recovery – if the server has been restarted, the existing session can be lost.
 		// In that case the transport returns an HTTP 404 error containing "session '<id>' not found".
@@ -339,13 +387,19 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 						req.Jsonrpc = ro.JsonrpcVersion
 					}
 					if ro.StringToken != "" {
-						if isStdio(client.transport) {
+						client.stateMu.RLock()
+						activeTransport = client.transport
+						client.stateMu.RUnlock()
+						if isStdio(activeTransport) {
 							req = withAuthMeta(req, ro.StringToken)
 						}
 						ctx = context.WithValue(ctx, authtransport.ContextAuthTokenKey, ro.StringToken)
 					}
 				}
-				response, err = client.transport.Send(ctx, req)
+				client.stateMu.RLock()
+				activeTransport = client.transport
+				client.stateMu.RUnlock()
+				response, err = activeTransport.Send(ctx, req)
 			} else {
 				// if reconnect failed, propagate original error for visibility
 				return nil, jsonrpc.NewInternalError(recErr.Error(), nil)
@@ -363,7 +417,10 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 		}
 		if nextReq != nil {
 			// use the current transport (may have changed due to reconnect)
-			response, err = client.transport.Send(ctx, nextReq)
+			client.stateMu.RLock()
+			activeTransport = client.transport
+			client.stateMu.RUnlock()
+			response, err = activeTransport.Send(ctx, nextReq)
 			if err != nil {
 				return nil, jsonrpc.NewInternalError(err.Error(), nil)
 			}
