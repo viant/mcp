@@ -11,7 +11,7 @@ import (
 // ListTools handles the tools/list method
 func (h *Handler) ListTools(ctx context.Context, request *jsonrpc.Request) (*schema.ListToolsResult, *jsonrpc.Error) {
 	listToolsRequest := &schema.ListToolsRequest{Method: request.Method}
-	if err := json.Unmarshal(request.Params, &listToolsRequest.Params); err != nil {
+	if err := unmarshalOptionalParams(request.Params, &listToolsRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
 	id, _ := jsonrpc.AsRequestIntId(request.Id)

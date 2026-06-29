@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/viant/mcp-protocol/schema"
 	"net/http"
+	"strings"
 )
 
 // protocolVersionMiddleware sets the response MCP-Protocol-Version header.
@@ -11,9 +12,20 @@ import (
 func protocolVersionMiddleware() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_ = r.Header.Get("MCP-Protocol-Version")
-			w.Header().Set("MCP-Protocol-Version", schema.LatestProtocolVersion)
+			w.Header().Set("MCP-Protocol-Version", negotiatedProtocolVersion(r.Header.Get("MCP-Protocol-Version")))
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+func negotiatedProtocolVersion(requested string) string {
+	requested = strings.TrimSpace(requested)
+	switch requested {
+	case "", schema.LatestProtocolVersion:
+		return schema.LatestProtocolVersion
+	case "2025-06-18":
+		return requested
+	default:
+		return schema.LatestProtocolVersion
 	}
 }

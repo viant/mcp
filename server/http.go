@@ -68,6 +68,7 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 	s.sseHandler = sse.New(s.NewHandler,
 		sse.WithURI(s.sseURI),
 		sse.WithMessageURI(s.sseMessageURI),
+		sse.WithKeepAliveInterval(2*time.Second),
 		// Enable auth cookie and rehydrate from it
 		sse.WithAuthStore(memAuth),
 		sse.WithBFFAuthCookie(&sse.BFFAuthCookie{Name: "BFF-Auth-Session", HttpOnly: true}),
@@ -75,6 +76,7 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 	)
 	s.streamingHandler = streamable.New(s.NewHandler,
 		streamable.WithURI(s.streamableURI),
+		streamable.WithKeepAliveInterval(2*time.Second),
 		// Enable auth cookie and rehydrate from it
 		streamable.WithAuthStore(memAuth),
 		streamable.WithBFFAuthCookie(&streamable.BFFAuthCookie{Name: "BFF-Auth-Session", HttpOnly: true}),

@@ -9,7 +9,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1
-	github.com/viant/jsonrpc v0.20.0
+	github.com/viant/jsonrpc v0.23.0
 	github.com/viant/mcp-protocol v0.14.0
 	github.com/viant/scy v0.24.0
 	golang.org/x/oauth2 v0.30.0
@@ -35,3 +35,5 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/viant/jsonrpc => /Users/awitas/go/src/github.com/viant/jsonrpc
