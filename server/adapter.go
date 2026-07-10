@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
+
 	"github.com/viant/jsonrpc"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/client"
@@ -10,7 +12,33 @@ import (
 
 // Adapter adapts a handler Handler to implement the client.Interface
 type Adapter struct {
-	handler *Handler
+	handler       *Handler
+	nextRequestID uint64
+}
+
+// ensureRequestID owns sequencing for in-process MCP calls, which do not pass
+// through a JSON-RPC transport. Explicit IDs are preserved and observed so a
+// later automatic ID cannot reuse the same value.
+func (a *Adapter) ensureRequestID(req *jsonrpc.Request) {
+	if req.Id != nil {
+		if id, ok := jsonrpc.AsRequestIntId(req.Id); ok && id > 0 {
+			a.observeRequestID(uint64(id))
+		}
+		return
+	}
+	req.Id = atomic.AddUint64(&a.nextRequestID, 1)
+}
+
+func (a *Adapter) observeRequestID(id uint64) {
+	for {
+		current := atomic.LoadUint64(&a.nextRequestID)
+		if current >= id {
+			return
+		}
+		if atomic.CompareAndSwapUint64(&a.nextRequestID, current, id) {
+			return
+		}
+	}
 }
 
 // injectAuthMeta ensures request params carry _meta.authorization.token for server-side auth interceptors.
@@ -62,6 +90,7 @@ func (a *Adapter) ListRoots(ctx context.Context, params *schema.ListRootsRequest
 		}
 	}
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 	if response.Error != nil {
 		return nil, response.Error
@@ -88,6 +117,7 @@ func (a *Adapter) CreateMessage(ctx context.Context, params *schema.CreateMessag
 		}
 	}
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 	if response.Error != nil {
 		return nil, response.Error
@@ -119,6 +149,7 @@ func (a *Adapter) Elicit(ctx context.Context, params *schema.ElicitRequestParams
 		}
 	}
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 	if response.Error != nil {
 		return nil, response.Error
@@ -147,6 +178,7 @@ func (a *Adapter) Initialize(ctx context.Context, options ...client.RequestOptio
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -182,6 +214,7 @@ func (a *Adapter) ListResourceTemplates(ctx context.Context, cursor *string, opt
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -214,6 +247,7 @@ func (a *Adapter) ListResources(ctx context.Context, cursor *string, options ...
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -246,6 +280,7 @@ func (a *Adapter) ListPrompts(ctx context.Context, cursor *string, options ...cl
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -278,6 +313,7 @@ func (a *Adapter) ListTools(ctx context.Context, cursor *string, options ...clie
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -309,6 +345,7 @@ func (a *Adapter) ReadResource(ctx context.Context, params *schema.ReadResourceR
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -335,6 +372,7 @@ func (a *Adapter) GetPrompt(ctx context.Context, params *schema.GetPromptRequest
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -361,6 +399,7 @@ func (a *Adapter) CallTool(ctx context.Context, params *schema.CallToolRequestPa
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -387,6 +426,7 @@ func (a *Adapter) Complete(ctx context.Context, params *schema.CompleteRequestPa
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -413,6 +453,7 @@ func (a *Adapter) Ping(ctx context.Context, params *schema.PingRequestParams, op
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -439,6 +480,7 @@ func (a *Adapter) Subscribe(ctx context.Context, params *schema.SubscribeRequest
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -463,6 +505,7 @@ func (a *Adapter) Unsubscribe(ctx context.Context, params *schema.UnsubscribeReq
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
@@ -489,6 +532,7 @@ func (a *Adapter) SetLevel(ctx context.Context, params *schema.SetLevelRequestPa
 	}
 
 	response := &jsonrpc.Response{}
+	a.ensureRequestID(req)
 	a.handler.Serve(ctx, req, response)
 
 	if response.Error != nil {
