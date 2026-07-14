@@ -20,6 +20,7 @@ type Server struct {
 	instructions              *string
 	protocolVersion           string
 	loggerName                string
+	toolProtocolErrors        bool
 	protectedResourcesHandler http.HandlerFunc
 	corsHandler               func(next http.Handler) http.Handler
 	corsConfig                *Cors
@@ -44,10 +45,11 @@ func (s *Server) NewHandler(ctx context.Context, transport transport.Transport) 
 
 func (s *Server) newHandler(ctx context.Context, transport transport.Transport) *Handler {
 	ret := &Handler{
-		Server:         s,
-		Notifier:       transport,
-		authorizer:     s.jRPCAuthorizer,
-		clientFeatures: make(map[string]bool),
+		Server:             s,
+		Notifier:           transport,
+		authorizer:         s.jRPCAuthorizer,
+		clientFeatures:     make(map[string]bool),
+		toolProtocolErrors: s.toolProtocolErrors,
 	}
 	ret.Logger = NewLogger(ret.loggerName, &ret.loggingLevel, ret.Notifier)
 

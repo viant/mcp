@@ -19,13 +19,14 @@ type Handler struct {
 	transport.Notifier
 	*Logger
 	*Server
-	clientInitialize *schema.InitializeRequestParams
-	loggingLevel     schema.LoggingLevel
-	handler          server.Handler
-	authorizer       auth.JRPCAuthorizer //note that http level authorized is implemented as middleware
-	clientFeatures   map[string]bool
-	Initialized      bool
-	err              error
+	clientInitialize   *schema.InitializeRequestParams
+	loggingLevel       schema.LoggingLevel
+	handler            server.Handler
+	authorizer         auth.JRPCAuthorizer //note that http level authorized is implemented as middleware
+	clientFeatures     map[string]bool
+	toolProtocolErrors bool
+	Initialized        bool
+	err                error
 }
 
 // Serve handles incoming JSON-RPC requests
@@ -99,7 +100,7 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	case schema.MethodToolsCall:
 		result, err := h.CallTool(ctx, request)
 		// For tool call errors, return a CallToolResult with isError flag instead of JSON-RPC error
-		if err != nil {
+		if err != nil && !h.toolProtocolErrors {
 			isErr := true
 			msg := err.Message
 			structured := map[string]interface{}{

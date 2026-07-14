@@ -130,7 +130,7 @@ func (s *Service) handleAuthorization(w http.ResponseWriter, r *http.Request, ne
 	}
 	resourceQuery := ""
 	if resourceURI != "" {
-		resourceQuery = fmt.Sprintf("?resource=%s", resourceURI)
+		resourceQuery = "?resource=" + url.QueryEscape(resourceURI)
 	}
 	proto, host := extractProtoAndHost(r)
 	metaURL := fmt.Sprintf("%s://%s/.well-known/oauth-protected-resource%s", proto, host, resourceQuery)
@@ -148,7 +148,7 @@ func (s *Service) handleAuthorization(w http.ResponseWriter, r *http.Request, ne
 	}
 
 	w.Header().Set("MCP-Protocol-Version", schema.LatestProtocolVersion)
-	w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s%s%s"`, metaURL, scopeFragment, btfFragment))
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s"%s%s`, metaURL, scopeFragment, btfFragment))
 	w.WriteHeader(statusCode)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -241,9 +241,6 @@ func (s *Service) ProtectedResourcesHandler(w http.ResponseWriter, request *http
 	policyRule := s.Policy.Global
 
 	if resource != "" {
-		if unescaped, err := url.QueryUnescape(resource); err == nil {
-			resource = unescaped
-		}
 		if strings.HasPrefix(resource, "tool/") {
 			if rule, ok := s.Policy.Tools[strings.TrimPrefix(resource, "tool/")]; ok && rule.ProtectedResourceMetadata != nil {
 				policyRule = rule
@@ -252,13 +249,13 @@ func (s *Service) ProtectedResourcesHandler(w http.ResponseWriter, request *http
 			policyRule = rule
 		}
 	}
-	metadata := policyRule.ProtectedResourceMetadata
-	if metadata == nil {
-		metadata = s.Policy.Global.ProtectedResourceMetadata
+	if policyRule == nil || policyRule.ProtectedResourceMetadata == nil {
+		http.NotFound(w, request)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(metadata)
+	_ = json.NewEncoder(w).Encode(policyRule.ProtectedResourceMetadata)
 }
 
 func New(config *Config) (*Service, error) {

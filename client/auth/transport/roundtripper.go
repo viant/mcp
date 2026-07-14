@@ -200,7 +200,7 @@ func (r *RoundTripper) ProtectedResourceToken(ctx context.Context, resourceMetad
 
 	//resourceMetadata.ScopesSupported
 
-	tokenKey := store.TokenKey{authorizationServerMetadata.Issuer, scope}
+	tokenKey := store.TokenKey{Issuer: authorizationServerMetadata.Issuer, Scopes: scope}
 	clientConfig, ok := r.store.LookupClientConfig(authorizationServerMetadata.Issuer)
 	if !ok {
 		// Attempt MCP dynamic client registration when no client config exists.

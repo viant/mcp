@@ -10,6 +10,15 @@ import (
 // Option is a function that configures the handler.
 type Option func(s *Server) error
 
+// WithToolProtocolErrors preserves JSON-RPC errors returned by tools/call.
+// The default converts those errors into CallToolResult values for compatibility.
+func WithToolProtocolErrors() Option {
+	return func(s *Server) error {
+		s.toolProtocolErrors = true
+		return nil
+	}
+}
+
 // WithCORS adds a new CORS handler to the handler.
 func WithCORS(cors *Cors) Option {
 	return func(s *Server) error {
