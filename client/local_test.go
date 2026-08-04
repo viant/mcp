@@ -35,7 +35,7 @@ func TestClient(t *testing.T) {
 		Roots:        &schema.ClientCapabilitiesRoots{},
 		Sampling:     &schema.ClientCapabilitiesSampling{},
 		Elicitation:  &schema.ClientCapabilitiesElicitation{},
-	}))
+	}), client.WithProtocolVersion("2025-06-18"))
 	result, err := client.Initialize(ctx)
 
 	assert.Nil(t, err)

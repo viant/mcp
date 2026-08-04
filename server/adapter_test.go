@@ -29,6 +29,9 @@ func TestServerAsClient(t *testing.T) {
 	clientInterface := srv.AsClient(ctx)
 	assert.NotNil(t, clientInterface)
 	assert.Implements(t, (*client.Interface)(nil), clientInterface)
+	discovery, err := clientInterface.(client.DiscoveryInterface).Discover(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, schema.LatestProtocolVersion, discovery.SupportedVersions[0])
 
 	// Initialize the client
 	result, err := clientInterface.Initialize(ctx)

@@ -6,6 +6,17 @@ import (
 	"github.com/viant/mcp-protocol/schema"
 )
 
+// DiscoveryInterface is implemented by July-capable clients without widening
+// the legacy Interface contract.
+type DiscoveryInterface interface {
+	Discover(ctx context.Context, options ...RequestOption) (*schema.DiscoverResult, error)
+}
+
+// SubscriptionInterface is the July long-lived notification stream API.
+type SubscriptionInterface interface {
+	Listen(ctx context.Context, filter schema.SubscriptionFilter, options ...RequestOption) (*schema.SubscriptionsListenResult, error)
+}
+
 // Interface defines the clientHandler interface for all exported methods
 type Interface interface {
 	// Initialize initializes the clientHandler

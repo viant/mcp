@@ -35,6 +35,20 @@ func (c *Client) Implements(method string) bool {
 	return c.implements[method]
 }
 
+func (c *Client) implementsForRequest(ctx context.Context, method string) bool {
+	if request, ok := ProtocolRequestFromContext(ctx); ok {
+		switch method {
+		case schema.MethodElicitationCreate:
+			return request.Capabilities.Elicitation != nil
+		case schema.MethodRootsList:
+			return request.Capabilities.Roots != nil
+		case schema.MethodSamplingCreateMessage:
+			return request.Capabilities.Sampling != nil
+		}
+	}
+	return c.Implements(method)
+}
+
 func (c *Client) NextRequestId() uint64 {
 	if c.Sequencer != nil {
 		id := c.NextRequestID()
@@ -45,7 +59,7 @@ func (c *Client) NextRequestId() uint64 {
 }
 
 func (c *Client) ListRoots(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ListRootsRequest]) (*schema.ListRootsResult, *jsonrpc.Error) {
-	if !c.Implements(schema.MethodRootsList) {
+	if !c.implementsForRequest(ctx, schema.MethodRootsList) {
 		return nil, jsonrpc.NewMethodNotFound("method: roots/list not implemented by client", nil)
 	}
 	if request.Id == 0 {
@@ -57,7 +71,7 @@ func (c *Client) ListRoots(ctx context.Context, request *jsonrpc.TypedRequest[*s
 
 // CreateMessage creates a sampling message on the client side.
 func (c *Client) CreateMessage(ctx context.Context, request *jsonrpc.TypedRequest[*schema.CreateMessageRequest]) (*schema.CreateMessageResult, *jsonrpc.Error) {
-	if !c.Implements(schema.MethodSamplingCreateMessage) {
+	if !c.implementsForRequest(ctx, schema.MethodSamplingCreateMessage) {
 		return nil, jsonrpc.NewMethodNotFound("method: sampling/createMessage not implemented by client", nil)
 	}
 	if request.Id == 0 {
@@ -71,7 +85,7 @@ func (c *Client) CreateMessage(ctx context.Context, request *jsonrpc.TypedReques
 
 // Elicit asks the client to elicit additional information from the user.
 func (c *Client) Elicit(ctx context.Context, request *jsonrpc.TypedRequest[*schema.ElicitRequest]) (*schema.ElicitResult, *jsonrpc.Error) {
-	if !c.Implements(schema.MethodElicitationCreate) {
+	if !c.implementsForRequest(ctx, schema.MethodElicitationCreate) {
 		return nil, jsonrpc.NewMethodNotFound("method: elicitation/create not implemented by client", nil)
 	}
 	if request.Id == 0 {

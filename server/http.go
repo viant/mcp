@@ -9,6 +9,7 @@ import (
 	streamauth "github.com/viant/jsonrpc/transport/server/auth"
 	"github.com/viant/jsonrpc/transport/server/http/sse"
 	"github.com/viant/jsonrpc/transport/server/http/streamable"
+	"github.com/viant/mcp-protocol/schema"
 	mcpauth "github.com/viant/mcp/server/auth"
 	"os"
 	"strings"
@@ -77,6 +78,9 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 	s.streamingHandler = streamable.New(s.NewHandler,
 		streamable.WithURI(s.streamableURI),
 		streamable.WithKeepAliveInterval(2*time.Second),
+		streamable.WithStatelessResolver(func(request *http.Request) bool {
+			return strings.TrimSpace(request.Header.Get(schema.HeaderProtocolVersion)) == schema.LatestProtocolVersion
+		}),
 		// Enable auth cookie and rehydrate from it
 		streamable.WithAuthStore(memAuth),
 		streamable.WithBFFAuthCookie(&streamable.BFFAuthCookie{Name: "BFF-Auth-Session", HttpOnly: true}),

@@ -2,7 +2,8 @@
 //
 // It provides a thin wrapper around the protocol interface defined in the
 // github.com/viant/mcp-protocol module and adds:
-//   - Automatic `initialize` handshake and capability negotiation.
+//   - Automatic `server/discover` negotiation for 2026-07-28, with legacy
+//     `initialize` support when an older protocol is selected.
 //   - Pluggable JSON-RPC transports (STDIO, HTTP/SSE, Streaming …).
 //   - Optional authorization interceptor that can acquire OAuth2/OIDC tokens on the
 //     fly and transparently retry failed requests.

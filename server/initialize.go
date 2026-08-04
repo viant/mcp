@@ -9,13 +9,20 @@ import (
 	"github.com/viant/mcp-protocol/schema"
 )
 
-// Initialize handles the initialize method
+// Initialize handles the legacy initialize method. July clients use Discover.
 func (h *Handler) Initialize(ctx context.Context, request *jsonrpc.Request) (*schema.InitializeResult, *jsonrpc.Error) {
 	initRequest := schema.InitializeRequest{Method: schema.MethodInitialize}
 	if err := json.Unmarshal(request.Params, &initRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse %v", err), request.Params)
 	}
 	protoVersion := initRequest.Params.ProtocolVersion
+	if protoVersion == schema.LatestProtocolVersion {
+		return nil, jsonrpc.NewMethodNotFound(fmt.Sprintf("method %s was removed in %s", schema.MethodInitialize, schema.LatestProtocolVersion), request.Params)
+	}
+	if !supportedProtocolVersion(protoVersion) {
+		data, _ := json.Marshal(map[string]interface{}{"requested": protoVersion, "supported": schema.SupportedProtocolVersions})
+		return nil, &jsonrpc.Error{Code: -32022, Message: fmt.Sprintf("unsupported MCP protocol version %q", protoVersion), Data: data}
+	}
 	h.clientInitialize = &initRequest.Params
 	result := schema.InitializeResult{
 		ProtocolVersion: protoVersion,

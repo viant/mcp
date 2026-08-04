@@ -25,7 +25,11 @@ func (l *Logger) Logger(name string) logger.Logger {
 }
 
 func (l *Logger) log(ctx context.Context, level schema.LoggingLevel, data any) error {
-	if l.level == nil || l.level.Ordinal() > level.Ordinal() {
+	configuredLevel := l.level
+	if request, ok := ProtocolRequestFromContext(ctx); ok {
+		configuredLevel = request.LogLevel
+	}
+	if configuredLevel == nil || configuredLevel.Ordinal() > level.Ordinal() {
 		//skip logging since level is too verbose
 		return nil
 	}

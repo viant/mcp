@@ -1,8 +1,11 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -21,6 +24,7 @@ import (
 
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
+	"github.com/viant/mcp-protocol/schema"
 
 	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp/client"
@@ -35,14 +39,83 @@ func (t *contextAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Respons
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	token, _ := req.Context().Value(authtransport.ContextAuthTokenKey).(string)
-	if token == "" || req.Header.Get("Authorization") != "" {
-		return base.RoundTrip(req)
-	}
 	clone := req.Clone(req.Context())
 	clone.Header = req.Header.Clone()
-	clone.Header.Set("Authorization", "Bearer "+token)
+	if clone.Header.Get(schema.HeaderProtocolVersion) == schema.LatestProtocolVersion && clone.Body != nil {
+		body, err := io.ReadAll(clone.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read MCP request body: %w", err)
+		}
+		_ = clone.Body.Close()
+		clone.Body = io.NopCloser(bytes.NewReader(body))
+		clone.ContentLength = int64(len(body))
+		if req.GetBody != nil {
+			clone.GetBody = req.GetBody
+		} else {
+			clone.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(body)), nil
+			}
+		}
+		if err := applyMCPStandardHeaders(clone.Header, body); err != nil {
+			return nil, err
+		}
+	}
+	token, _ := req.Context().Value(authtransport.ContextAuthTokenKey).(string)
+	if token != "" && clone.Header.Get("Authorization") == "" {
+		clone.Header.Set("Authorization", "Bearer "+token)
+	}
 	return base.RoundTrip(clone)
+}
+
+func applyMCPStandardHeaders(header http.Header, body []byte) error {
+	var request struct {
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+		ID     json.RawMessage `json:"id"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		return fmt.Errorf("decode MCP request for standard headers: %w", err)
+	}
+	if request.Method == "" {
+		// JSON-RPC responses to server-initiated requests use the same stateless
+		// POST transport but do not carry request-routing headers.
+		return nil
+	}
+	// Notifications do not carry the standard request routing headers.
+	if len(request.ID) == 0 || string(request.ID) == "null" {
+		return nil
+	}
+	header.Set(schema.HeaderMethod, request.Method)
+	field := standardHeaderNameField(request.Method)
+	if field == "" {
+		return nil
+	}
+	var params map[string]json.RawMessage
+	if err := json.Unmarshal(request.Params, &params); err != nil {
+		return fmt.Errorf("decode %s params for %s: %w", request.Method, schema.HeaderName, err)
+	}
+	var name string
+	if value := params[field]; len(value) > 0 {
+		if err := json.Unmarshal(value, &name); err != nil {
+			return fmt.Errorf("decode %s params.%s: %w", request.Method, field, err)
+		}
+	}
+	if name == "" {
+		return fmt.Errorf("%s params.%s is required", request.Method, field)
+	}
+	header.Set(schema.HeaderName, name)
+	return nil
+}
+
+func standardHeaderNameField(method string) string {
+	switch method {
+	case schema.MethodToolsCall, schema.MethodPromptsGet:
+		return "name"
+	case schema.MethodResourcesRead:
+		return "uri"
+	default:
+		return ""
+	}
 }
 
 // ClientOptions
@@ -131,6 +204,9 @@ func (c *ClientOptions) Init() {
 		c.Name = "MCPClient"
 		c.Version = "0.1"
 	}
+	if c.ProtocolVersion == "" {
+		c.ProtocolVersion = schema.LatestProtocolVersion
+	}
 }
 
 // SetAuthTransport injects a pre-built auth RoundTripper and HTTP client
@@ -157,13 +233,14 @@ func NewClient(handler pclient.Handler, options *ClientOptions) (*client.Client,
 	return NewClientWithContext(context.Background(), handler, options)
 }
 
-// NewClientWithContext creates an MCP client and runs the initial handshake with
-// the supplied context so per-request auth tokens and other caller state are
-// available during Initialize.
+// NewClientWithContext creates an MCP client and runs discovery (or the legacy
+// initialize handshake) with the supplied context so per-request auth tokens
+// and other caller state are available during negotiation.
 func NewClientWithContext(ctx context.Context, handler pclient.Handler, options *ClientOptions) (*client.Client, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	options.Init()
 	// Build initial transport and capture a factory for future reconnects.
 	dial := func(ctx context.Context) (transport.Transport, error) {
 		t, _, err := options.getTransport(ctx, handler)
@@ -241,7 +318,7 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			}
 		}
 	}
-	if httpClient == nil && c.CookieJar != nil {
+	if httpClient == nil && (c.CookieJar != nil || c.Transport.Type == "sse" || c.Transport.Type == "streamable") {
 		httpClient = &http.Client{Jar: c.CookieJar}
 	}
 	if httpClient != nil {
@@ -269,6 +346,9 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			return nil, nil, fmt.Errorf("URL is required for ss transport")
 		}
 		opts := []sse.Option{}
+		if c.ProtocolVersion != "" {
+			opts = append(opts, sse.WithProtocolVersion(c.ProtocolVersion))
+		}
 		if httpClient != nil {
 			opts = append(opts, sse.WithHttpClient(httpClient), sse.WithMessageHttpClient(httpClient))
 		}
@@ -282,6 +362,18 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 		httpOptions := c.Transport.ClientTransportHTTP
 
 		opts := []streamable.Option{}
+		if c.ProtocolVersion != "" {
+			opts = append(opts, streamable.WithProtocolVersion(c.ProtocolVersion))
+		}
+		if c.ProtocolVersion == schema.LatestProtocolVersion {
+			opts = append(opts,
+				streamable.WithStateless(),
+				streamable.WithRunTimeout(0),
+				streamable.WithRequestHeaderProvider(func(_ context.Context, body []byte, header http.Header) error {
+					return applyMCPStandardHeaders(header, body)
+				}),
+			)
+		}
 		if httpClient != nil {
 			opts = append(opts, streamable.WithHTTPClient(httpClient))
 		}
