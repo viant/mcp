@@ -2,7 +2,10 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +46,78 @@ func (*julyProtocolClientHandler) Elicit(context.Context, *jsonrpc.TypedRequest[
 }
 
 var _ pclient.Handler = (*julyProtocolClientHandler)(nil)
+
+func TestUnversionedClientFallsBackToLegacyProtocol(t *testing.T) {
+	var discoverCalls, initializeCalls int
+	legacyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var request struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch request.Method {
+		case schema.MethodServerDiscover:
+			discoverCalls++
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      request.ID,
+				"error": map[string]interface{}{
+					"code":    -32601,
+					"message": "method not found",
+				},
+			})
+		case schema.MethodInitialize:
+			initializeCalls++
+			w.Header().Set("Mcp-Session-Id", "legacy-session")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      request.ID,
+				"result": map[string]interface{}{
+					"protocolVersion": schema.LegacyProtocolVersion,
+					"capabilities":    map[string]interface{}{},
+					"serverInfo": map[string]interface{}{
+						"name":    "legacy-server",
+						"version": "1.0",
+					},
+				},
+			})
+		case schema.MethodNotificationInitialized:
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			t.Fatalf("unexpected method %q", request.Method)
+		}
+	}))
+	defer legacyServer.Close()
+
+	options := &ClientOptions{
+		Name:    "auto-client",
+		Version: "1.0",
+		Transport: ClientTransport{
+			Type: "streamable",
+			ClientTransportHTTP: ClientTransportHTTP{
+				URL: legacyServer.URL,
+			},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := NewClientWithContext(ctx, &julyProtocolClientHandler{}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if options.ProtocolVersion != schema.LegacyProtocolVersion {
+		t.Fatalf("expected fallback to %s, got %s", schema.LegacyProtocolVersion, options.ProtocolVersion)
+	}
+	if discoverCalls != 1 || initializeCalls != 1 {
+		t.Fatalf("expected one discovery and one legacy initialize, got discovery=%d initialize=%d", discoverCalls, initializeCalls)
+	}
+}
 
 func TestJulyStreamableHTTPIsStatelessEndToEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

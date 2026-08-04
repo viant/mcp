@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/viant/jsonrpc/transport"
@@ -240,7 +241,32 @@ func NewClientWithContext(ctx context.Context, handler pclient.Handler, options 
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	autoProtocol := strings.TrimSpace(options.ProtocolVersion) == ""
 	options.Init()
+	initCtx := ctx
+	cancelProbe := func() {}
+	if autoProtocol && options.ProtocolVersion == schema.LatestProtocolVersion {
+		initCtx, cancelProbe = context.WithTimeout(ctx, 5*time.Second)
+	}
+	cli, err := newClientWithProtocol(ctx, initCtx, handler, options)
+	cancelProbe()
+	if err == nil || !autoProtocol || options.ProtocolVersion != schema.LatestProtocolVersion {
+		return cli, err
+	}
+	latestErr := err
+	if cli != nil {
+		cli.Close()
+	}
+	options.ProtocolVersion = schema.LegacyProtocolVersion
+	legacyClient, legacyErr := newClientWithProtocol(ctx, ctx, handler, options)
+	if legacyErr != nil {
+		return nil, fmt.Errorf("MCP %s discovery failed: %v; legacy %s initialize failed: %w",
+			schema.LatestProtocolVersion, latestErr, schema.LegacyProtocolVersion, legacyErr)
+	}
+	return legacyClient, nil
+}
+
+func newClientWithProtocol(ctx, initCtx context.Context, handler pclient.Handler, options *ClientOptions) (*client.Client, error) {
 	// Build initial transport and capture a factory for future reconnects.
 	dial := func(ctx context.Context) (transport.Transport, error) {
 		t, _, err := options.getTransport(ctx, handler)
@@ -263,8 +289,8 @@ func NewClientWithContext(ctx context.Context, handler pclient.Handler, options 
 	opts = append(opts, client.WithPingInterval(time.Duration(pingEvery)*time.Second))
 
 	cli := client.New(options.Name, options.Version, rpcTransport, opts...)
-	if _, err := cli.Initialize(ctx); err != nil {
-		return nil, err
+	if _, err := cli.Initialize(initCtx); err != nil {
+		return cli, err
 	}
 	return cli, nil
 }
