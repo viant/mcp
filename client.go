@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
 	"github.com/viant/jsonrpc/transport/client/http/sse"
 	"github.com/viant/jsonrpc/transport/client/http/streamable"
@@ -31,8 +34,29 @@ import (
 	"github.com/viant/mcp/client"
 )
 
+const (
+	compatibilityProtocolVersionJune2025 = "2025-06-18"
+	invalidMCPProtocolVersionMarker      = "invalid MCP-Protocol-Version"
+	protocolRejectionScanLimit           = 64 << 10
+	protocolRejectionScanTimeout         = 250 * time.Millisecond
+)
+
+var (
+	errInvalidMCPProtocolVersion = errors.New(invalidMCPProtocolVersionMarker)
+	errProtocolRejectionScan     = errors.New("timed out scanning SSE protocol rejection response")
+)
+
 type contextAuthHeaderTransport struct {
 	base http.RoundTripper
+}
+
+type sseProtocolRejectionTransport struct {
+	base http.RoundTripper
+}
+
+type prefixedReadCloser struct {
+	io.Reader
+	io.Closer
 }
 
 func (t *contextAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -66,6 +90,53 @@ func (t *contextAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Respons
 		clone.Header.Set("Authorization", "Bearer "+token)
 	}
 	return base.RoundTrip(clone)
+}
+
+func (t *sseProtocolRejectionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	response, err := base.RoundTrip(req)
+	if err != nil || response == nil || response.Body == nil ||
+		req.Method != http.MethodGet || response.StatusCode != http.StatusBadRequest {
+		return response, err
+	}
+
+	bodyPrefix, readErr := readSSEProtocolRejectionPrefix(req.Context(), response.Body)
+	if readErr != nil {
+		_ = response.Body.Close()
+		return nil, readErr
+	}
+	response.Body = &prefixedReadCloser{
+		Reader: io.MultiReader(bytes.NewReader(bodyPrefix), response.Body),
+		Closer: response.Body,
+	}
+	if !bytes.Contains(bodyPrefix, []byte(invalidMCPProtocolVersionMarker)) {
+		return response, nil
+	}
+	_ = response.Body.Close()
+	return nil, errInvalidMCPProtocolVersion
+}
+
+func readSSEProtocolRejectionPrefix(ctx context.Context, body io.ReadCloser) ([]byte, error) {
+	stopContextClose := context.AfterFunc(ctx, func() {
+		_ = body.Close()
+	})
+	timeoutClose := time.AfterFunc(protocolRejectionScanTimeout, func() {
+		_ = body.Close()
+	})
+
+	data, err := io.ReadAll(io.LimitReader(body, protocolRejectionScanLimit))
+	timedOut := !timeoutClose.Stop()
+	stopContextClose()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	if timedOut {
+		return nil, errProtocolRejectionScan
+	}
+	return data, err
 }
 
 func applyMCPStandardHeaders(header http.Header, body []byte) error {
@@ -250,20 +321,75 @@ func NewClientWithContext(ctx context.Context, handler pclient.Handler, options 
 	}
 	cli, err := newClientWithProtocol(ctx, initCtx, handler, options)
 	cancelProbe()
-	if err == nil || !autoProtocol || options.ProtocolVersion != schema.LatestProtocolVersion {
-		return cli, err
+	if err == nil {
+		return cli, nil
 	}
-	latestErr := err
 	if cli != nil {
 		cli.Close()
 	}
+	if !autoProtocol || options.ProtocolVersion != schema.LatestProtocolVersion {
+		return nil, err
+	}
+	latestErr := err
 	options.ProtocolVersion = schema.LegacyProtocolVersion
 	legacyClient, legacyErr := newClientWithProtocol(ctx, ctx, handler, options)
-	if legacyErr != nil {
-		return nil, fmt.Errorf("MCP %s discovery failed: %v; legacy %s initialize failed: %w",
+	if legacyErr == nil {
+		return legacyClient, nil
+	}
+	if legacyClient != nil {
+		legacyClient.Close()
+	}
+	if !isProtocolVersionNegotiationError(legacyErr) {
+		return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %v; %s initialize: %w",
 			schema.LatestProtocolVersion, latestErr, schema.LegacyProtocolVersion, legacyErr)
 	}
-	return legacyClient, nil
+
+	options.ProtocolVersion = compatibilityProtocolVersionJune2025
+	compatibilityClient, compatibilityErr := newClientWithProtocol(ctx, ctx, handler, options)
+	if compatibilityErr == nil {
+		return compatibilityClient, nil
+	}
+	if compatibilityClient != nil {
+		compatibilityClient.Close()
+	}
+	return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %v; %s initialize: %v; %s initialize: %w",
+		schema.LatestProtocolVersion, latestErr,
+		schema.LegacyProtocolVersion, legacyErr,
+		compatibilityProtocolVersionJune2025, compatibilityErr)
+}
+
+func isProtocolVersionNegotiationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errInvalidMCPProtocolVersion) {
+		return true
+	}
+	var rpcErr *jsonrpc.Error
+	if errors.As(err, &rpcErr) && rpcErr.Code == schema.ErrorCodeUnsupportedProtocolVersion {
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+	if !strings.Contains(message, strings.ToLower(invalidMCPProtocolVersionMarker)) {
+		return false
+	}
+	status, ok := transportHTTPStatus(message)
+	return ok && status == http.StatusBadRequest
+}
+
+func transportHTTPStatus(message string) (int, bool) {
+	const marker = "invalid status code:"
+	index := strings.Index(message, marker)
+	if index == -1 {
+		return 0, false
+	}
+	fields := strings.Fields(message[index+len(marker):])
+	if len(fields) == 0 {
+		return 0, false
+	}
+	status, err := strconv.Atoi(strings.TrimSuffix(fields[0], ":"))
+	return status, err == nil
 }
 
 func newClientWithProtocol(ctx, initCtx context.Context, handler pclient.Handler, options *ClientOptions) (*client.Client, error) {
@@ -349,6 +475,9 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 	}
 	if httpClient != nil {
 		httpClient = wrapContextAuthHTTPClient(httpClient)
+		if c.Transport.Type == "sse" {
+			httpClient = wrapSSEProtocolRejectionHTTPClient(httpClient)
+		}
 	}
 
 	clientHandler := client.NewHandler(handler)
@@ -381,6 +510,9 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 		opts = append(opts, sse.WithHandler(clientHandler))
 		ret, err := sse.New(ctx, c.Transport.ClientTransportHTTP.URL, opts...)
 		if err != nil {
+			if ret != nil {
+				_ = ret.Close()
+			}
 			return nil, nil, fmt.Errorf("failed to create SSE transport: %w", err)
 		}
 		return ret, authRT, nil
@@ -420,6 +552,15 @@ func wrapContextAuthHTTPClient(client *http.Client) *http.Client {
 	}
 	clone := *client
 	clone.Transport = &contextAuthHeaderTransport{base: client.Transport}
+	return &clone
+}
+
+func wrapSSEProtocolRejectionHTTPClient(client *http.Client) *http.Client {
+	if client == nil {
+		return nil
+	}
+	clone := *client
+	clone.Transport = &sseProtocolRejectionTransport{base: client.Transport}
 	return &clone
 }
 
