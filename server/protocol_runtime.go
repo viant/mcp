@@ -43,24 +43,35 @@ func (h *Handler) prepareProtocolRequest(ctx context.Context, request *jsonrpc.R
 		return ctx, legacyVersion, nil
 	}
 	version, _ := meta["io.modelcontextprotocol/protocolVersion"].(string)
+	metaChanged := false
 	if version == "" {
 		// July-generated parameter structs emit a zero-valued _meta object when
 		// used by older in-process callers. Treat that shape as legacy rather
 		// than mistaking it for an explicitly malformed July request.
-		legacyVersion := h.legacyProtocolVersion()
-		meta["io.modelcontextprotocol/protocolVersion"] = legacyVersion
-		raw, err := json.Marshal(params)
-		if err != nil {
-			return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
-		}
-		request.Params = raw
-		return ctx, legacyVersion, nil
+		version = h.legacyProtocolVersion()
+		meta["io.modelcontextprotocol/protocolVersion"] = version
+		metaChanged = true
 	}
 	if !supportedProtocolVersion(version) {
 		data, _ := json.Marshal(map[string]interface{}{"requested": version, "supported": schema.SupportedProtocolVersions})
 		return ctx, "", &jsonrpc.Error{Code: -32022, Message: fmt.Sprintf("unsupported MCP protocol version %q", version), Data: data}
 	}
 	if version != schema.LatestProtocolVersion {
+		// RequestMetaObject in the latest schema requires per-request client
+		// capabilities. Legacy clients do not send that field, so add an empty
+		// value for internal typed decoding while preserving legacy metadata
+		// such as progressToken.
+		if _, ok := meta["io.modelcontextprotocol/clientCapabilities"]; !ok {
+			meta["io.modelcontextprotocol/clientCapabilities"] = map[string]interface{}{}
+			metaChanged = true
+		}
+		if metaChanged {
+			raw, err := json.Marshal(params)
+			if err != nil {
+				return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
+			}
+			request.Params = raw
+		}
 		return ctx, version, nil
 	}
 

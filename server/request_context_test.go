@@ -31,6 +31,46 @@ func TestPrepareProtocolRequestKeepsCapabilitiesRequestScoped(t *testing.T) {
 	require.Nil(t, handler.clientInitialize)
 }
 
+func TestPrepareProtocolRequestNormalizesLegacyMeta(t *testing.T) {
+	testCases := []struct {
+		name string
+		meta map[string]interface{}
+	}{
+		{
+			name: "progress token only",
+			meta: map[string]interface{}{"progressToken": float64(1)},
+		},
+		{
+			name: "explicit legacy version",
+			meta: map[string]interface{}{
+				"io.modelcontextprotocol/protocolVersion": schema.LegacyProtocolVersion,
+				"progressToken": float64(1),
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			raw, err := json.Marshal(map[string]interface{}{
+				"_meta":     testCase.meta,
+				"arguments": map[string]interface{}{},
+				"name":      "AdHierarchy",
+			})
+			require.NoError(t, err)
+			request := &jsonrpc.Request{Method: schema.MethodToolsCall, Params: raw}
+
+			_, version, rpcErr := (&Handler{}).prepareProtocolRequest(context.Background(), request)
+			require.Nil(t, rpcErr)
+			require.Equal(t, schema.LegacyProtocolVersion, version)
+
+			var params schema.CallToolRequestParams
+			require.NoError(t, json.Unmarshal(request.Params, &params))
+			require.NotNil(t, params.Meta.ProgressToken)
+			require.Equal(t, schema.LegacyProtocolVersion, params.Meta.IoModelcontextprotocolProtocolVersion)
+		})
+	}
+}
+
 func julyRequestParams(t *testing.T, capabilities schema.ClientCapabilities) json.RawMessage {
 	raw, err := json.Marshal(map[string]interface{}{
 		"_meta": map[string]interface{}{
