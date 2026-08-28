@@ -13,6 +13,7 @@ import (
 
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/oauth2/meta"
+	"github.com/viant/mcp/client/auth/config"
 	"github.com/viant/mcp/client/auth/store"
 	"github.com/viant/mcp/internal/debuglog"
 	"github.com/viant/scy/auth/flow"
@@ -34,13 +35,35 @@ type RoundTripper struct {
 	rejected             map[string]time.Time
 	rejectTTL            time.Duration
 	mux                  sync.Mutex
+
+	// credentialResolver, when set, makes this RoundTripper the delegated
+	// transport coordinator: credentials come exclusively from the external
+	// resolver and the legacy BFF/browser fallbacks are disabled.
+	credentialResolver config.CredentialResolver
+	requirement        *config.Requirement
 }
 
 func (r *RoundTripper) Store() store.Store {
 	return r.store
 }
 
+// HasCredentialResolver reports whether an external credential resolver owns
+// this transport's authentication (delegated mode).
+func (r *RoundTripper) HasCredentialResolver() bool {
+	return r.credentialResolver != nil
+}
+
+// Requirement returns a copy of the compiled credential requirement for
+// delegated mode, nil otherwise. A clone is returned so callers can never
+// mutate the transport's internal requirement state.
+func (r *RoundTripper) Requirement() *config.Requirement {
+	return r.requirement.Clone()
+}
+
 func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if r.credentialResolver != nil {
+		return r.delegatedRoundTrip(req)
+	}
 	// 1) First, send the request; if ctx carries an explicit token, attach it.
 	probe := clone(req)
 
@@ -170,6 +193,9 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (r *RoundTripper) Token(ctx context.Context, resp *http.Response) (*oauth2.Token, error) {
+	if r.credentialResolver != nil {
+		return nil, fmt.Errorf("interactive oauth flow is disabled: external credential resolver is installed")
+	}
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
@@ -182,6 +208,9 @@ func (r *RoundTripper) Token(ctx context.Context, resp *http.Response) (*oauth2.
 }
 
 func (r *RoundTripper) ProtectedResourceToken(ctx context.Context, resourceMetadata *meta.ProtectedResourceMetadata, scope string) (*oauth2.Token, error) {
+	if r.credentialResolver != nil {
+		return nil, fmt.Errorf("interactive oauth flow is disabled: external credential resolver is installed")
+	}
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	authServers := resourceMetadata.AuthorizationServers
 	issuer := authServers[rnd.Intn(len(authServers))]

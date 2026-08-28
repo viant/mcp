@@ -37,6 +37,27 @@ func WithClientConfig(client *oauth2.Config) MemoryStoreOption {
 	}
 }
 
+// ConfigIssuer derives the issuer key for a client config from its AuthURL,
+// using the same derivation as WithClientConfig. The result is normalized
+// (whitespace and trailing slashes trimmed) so that arbitrary injected Store
+// implementations — which may not normalize keys themselves — receive the
+// same canonical issuer key that lookups use.
+func ConfigIssuer(client *oauth2.Config) string {
+	issuer, _ := url.Base(client.Endpoint.AuthURL, http.SecureScheme)
+	return normalizeIssuer(issuer)
+}
+
+// InstallClientConfig registers a client config in any Store implementation
+// under the normalized issuer derived from its AuthURL. It allows loaded
+// OAuth client configurations to be retained when a caller injects its own
+// Store instead of using the default in-memory store.
+func InstallClientConfig(s Store, client *oauth2.Config) error {
+	if s == nil || client == nil {
+		return nil
+	}
+	return s.AddClientConfig(ConfigIssuer(client), client)
+}
+
 type memoryStore struct {
 	mu               sync.RWMutex
 	issuerMetadata   map[string]*meta.AuthorizationServerMetadata
@@ -79,7 +100,7 @@ func (m *memoryStore) LookupClientConfig(issuer string) (*oauth2.Config, bool) {
 }
 
 func normalizeIssuer(iss string) string {
-	return strings.TrimRight(iss, "/")
+	return strings.TrimRight(strings.TrimSpace(iss), "/")
 }
 
 func (m *memoryStore) AddClientConfig(issuer string, client *oauth2.Config) error {
