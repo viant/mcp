@@ -631,11 +631,18 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 			opts = append(opts,
 				streamable.WithStateless(),
 				streamable.WithRunTimeout(0),
-				streamable.WithRequestHeaderProvider(func(_ context.Context, body []byte, header http.Header) error {
-					return applyMCPStandardHeaders(header, body)
-				}),
 			)
 		}
+		// Streamable HTTP POSTs must advertise both response representations.
+		// This applies to legacy initialize as well as stateless discovery;
+		// several compliant servers reject application/json-only clients.
+		opts = append(opts, streamable.WithRequestHeaderProvider(func(_ context.Context, body []byte, header http.Header) error {
+			header.Set("Accept", "application/json, text/event-stream")
+			// Gateways use these routing headers to map tools/call to the
+			// granted tool scope even when protocol negotiation falls back to
+			// an older MCP version.
+			return applyMCPStandardHeaders(header, body)
+		}))
 		if httpClient != nil {
 			opts = append(opts, streamable.WithHTTPClient(httpClient))
 		}
