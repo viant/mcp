@@ -71,13 +71,27 @@ type OAuthProvider struct {
 // an external secret resource (e.g. SCY) holding client id/secret and
 // endpoints; secrets never appear inline.
 type OAuthClient struct {
-	ConfigURL    string   `yaml:"configURL,omitempty" json:"configURL,omitempty"`
-	RedirectURI  string   `yaml:"redirectURI,omitempty" json:"redirectURI,omitempty"`
-	Confidential bool     `yaml:"confidential,omitempty" json:"confidential,omitempty"`
-	UsePKCE      bool     `yaml:"usePKCE,omitempty" json:"usePKCE,omitempty"`
-	RefreshLead  string   `yaml:"refreshLead,omitempty" json:"refreshLead,omitempty"`
-	ClockSkew    string   `yaml:"clockSkew,omitempty" json:"clockSkew,omitempty"`
-	Scopes       []string `yaml:"scopes,omitempty" json:"scopes,omitempty"`
+	ConfigURL    string `yaml:"configURL,omitempty" json:"configURL,omitempty"`
+	RedirectURI  string `yaml:"redirectURI,omitempty" json:"redirectURI,omitempty"`
+	Confidential bool   `yaml:"confidential,omitempty" json:"confidential,omitempty"`
+	UsePKCE      bool   `yaml:"usePKCE,omitempty" json:"usePKCE,omitempty"`
+	RefreshLead  string `yaml:"refreshLead,omitempty" json:"refreshLead,omitempty"`
+	ClockSkew    string `yaml:"clockSkew,omitempty" json:"clockSkew,omitempty"`
+	// AuthTimeout bounds one interactive authorization attempt. It is separate
+	// from MCP discovery and tool-call deadlines and defaults to five minutes.
+	AuthTimeout string   `yaml:"authTimeout,omitempty" json:"authTimeout,omitempty"`
+	Scopes      []string `yaml:"scopes,omitempty" json:"scopes,omitempty"`
+}
+
+const DefaultAuthTimeout = 5 * time.Minute
+
+// AuthTimeoutDuration parses AuthTimeout and returns the five-minute default
+// when it is omitted.
+func (c *OAuthClient) AuthTimeoutDuration() (time.Duration, error) {
+	if c == nil || strings.TrimSpace(c.AuthTimeout) == "" {
+		return DefaultAuthTimeout, nil
+	}
+	return time.ParseDuration(c.AuthTimeout)
 }
 
 // RefreshLeadDuration parses RefreshLead; zero when unset.
@@ -134,6 +148,12 @@ func (p *OAuthProvider) Validate() error {
 		}
 		if _, err := client.ClockSkewDuration(); err != nil {
 			return fmt.Errorf("oauth provider %q: client %q: invalid clockSkew: %w", p.ID, name, err)
+		}
+		if timeout, err := client.AuthTimeoutDuration(); err != nil || timeout <= 0 {
+			if err == nil {
+				err = fmt.Errorf("must be greater than zero")
+			}
+			return fmt.Errorf("oauth provider %q: client %q: invalid authTimeout: %w", p.ID, name, err)
 		}
 	}
 	return nil

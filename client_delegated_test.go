@@ -3,9 +3,9 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -189,7 +189,8 @@ func TestDelegatedInitialize_LinkRequiredSurfaced(t *testing.T) {
 		defer client.Close()
 	}
 	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "oauth link required"), "expected link-required signal, got: %v", err)
+	var linkRequired *authcfg.OAuthLinkRequiredError
+	assert.True(t, errors.As(err, &linkRequired), "expected typed link-required signal, got %T: %v", err, err)
 	_, refreshCount := resolver.counts()
 	assert.Equal(t, 1, refreshCount, "exactly one refresh, never a storm")
 	assert.Equal(t, []string{"Bearer stale", "Bearer still-bad"}, log.initializeAuth, "exactly one retry")

@@ -44,6 +44,11 @@ func TestOAuthProvider_Validate(t *testing.T) {
 			expectError: true,
 		},
 		{
+			name:        "invalid authTimeout",
+			provider:    &OAuthProvider{ID: "dev6", Issuer: "https://idp.example.com", Clients: map[string]*OAuthClient{"web": {AuthTimeout: "later"}}},
+			expectError: true,
+		},
+		{
 			name:        "relative issuer",
 			provider:    &OAuthProvider{ID: "dev6", Issuer: "idp.example.com"},
 			expectError: true,
@@ -143,18 +148,24 @@ func TestOAuthProvider_Client(t *testing.T) {
 }
 
 func TestOAuthClient_Durations(t *testing.T) {
-	client := &OAuthClient{RefreshLead: "15m", ClockSkew: "30s"}
+	client := &OAuthClient{RefreshLead: "15m", ClockSkew: "30s", AuthTimeout: "8m"}
 	lead, err := client.RefreshLeadDuration()
 	assert.NoError(t, err)
 	assert.Equal(t, 15*time.Minute, lead)
 	skew, err := client.ClockSkewDuration()
 	assert.NoError(t, err)
 	assert.Equal(t, 30*time.Second, skew)
+	authTimeout, err := client.AuthTimeoutDuration()
+	assert.NoError(t, err)
+	assert.Equal(t, 8*time.Minute, authTimeout)
 
 	empty := &OAuthClient{}
 	lead, err = empty.RefreshLeadDuration()
 	assert.NoError(t, err)
 	assert.Equal(t, time.Duration(0), lead)
+	authTimeout, err = empty.AuthTimeoutDuration()
+	assert.NoError(t, err)
+	assert.Equal(t, 5*time.Minute, authTimeout)
 }
 
 func TestNormalizeScopes(t *testing.T) {

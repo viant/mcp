@@ -14,6 +14,7 @@ import (
 	pclient "github.com/viant/mcp-protocol/client"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/client/auth"
+	authcfg "github.com/viant/mcp/client/auth/config"
 	authtransport "github.com/viant/mcp/client/auth/transport"
 )
 
@@ -98,6 +99,9 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 	}
 	response, err := currentTransport.Send(ctx, req)
 	if err != nil {
+		if authcfg.IsLinkRequired(err) {
+			return nil, err
+		}
 		return nil, jsonrpc.NewInternalError(err.Error(), req.Params)
 	}
 	if response.Error != nil {
@@ -177,6 +181,9 @@ func (c *Client) discover(ctx context.Context, options ...RequestOption) (*schem
 	}
 	response, err := activeTransport.Send(ctx, req)
 	if err != nil {
+		if authcfg.IsLinkRequired(err) {
+			return nil, err
+		}
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
 	if response.Error != nil {
@@ -463,6 +470,9 @@ func WithAuthInterceptor(authorizer *auth.Authorizer) Option {
 func send[P any, R any](ctx context.Context, client *Client, method string, parameters *P, options ...RequestOption) (*R, error) {
 	if !client.isInitialized() { //ensure initialized
 		if err := client.ensureInitialized(ctx); err != nil {
+			if authcfg.IsLinkRequired(err) {
+				return nil, err
+			}
 			return nil, jsonrpc.NewInternalError(err.Error(), nil)
 		}
 	}
@@ -493,6 +503,9 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 	// Send initial request
 	response, err := activeTransport.Send(ctx, req)
 	if err != nil {
+		if authcfg.IsLinkRequired(err) {
+			return nil, err
+		}
 		// Automatic session recovery – if the server has been restarted, the existing session can be lost.
 		// In that case the transport returns an HTTP 404 error containing "session '<id>' not found".
 		if strings.Contains(err.Error(), "session") && strings.Contains(err.Error(), "not found") {
@@ -523,10 +536,16 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 				response, err = activeTransport.Send(ctx, req)
 			} else {
 				// if reconnect failed, propagate original error for visibility
+				if authcfg.IsLinkRequired(recErr) {
+					return nil, recErr
+				}
 				return nil, jsonrpc.NewInternalError(recErr.Error(), nil)
 			}
 		}
 		if err != nil {
+			if authcfg.IsLinkRequired(err) {
+				return nil, err
+			}
 			return nil, jsonrpc.NewInternalError(err.Error(), nil)
 		}
 	}
@@ -534,6 +553,9 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 	if client.authInterceptor != nil {
 		nextReq, interceptErr := client.authInterceptor.Intercept(ctx, req, response)
 		if interceptErr != nil {
+			if authcfg.IsLinkRequired(interceptErr) {
+				return nil, interceptErr
+			}
 			return nil, jsonrpc.NewInternalError(interceptErr.Error(), nil)
 		}
 		if nextReq != nil {
@@ -543,6 +565,9 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 			client.stateMu.RUnlock()
 			response, err = activeTransport.Send(ctx, nextReq)
 			if err != nil {
+				if authcfg.IsLinkRequired(err) {
+					return nil, err
+				}
 				return nil, jsonrpc.NewInternalError(err.Error(), nil)
 			}
 		}

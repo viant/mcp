@@ -401,6 +401,9 @@ func NewClientWithContext(ctx context.Context, handler pclient.Handler, options 
 	if cli != nil {
 		cli.Close()
 	}
+	if authcfg.IsLinkRequired(err) {
+		return nil, err
+	}
 	if !autoProtocol || options.ProtocolVersion != schema.LatestProtocolVersion {
 		return nil, err
 	}
@@ -412,6 +415,9 @@ func NewClientWithContext(ctx context.Context, handler pclient.Handler, options 
 	}
 	if legacyClient != nil {
 		legacyClient.Close()
+	}
+	if authcfg.IsLinkRequired(legacyErr) {
+		return nil, legacyErr
 	}
 	if !isProtocolVersionNegotiationError(legacyErr) {
 		return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %v; %s initialize: %w",

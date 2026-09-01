@@ -140,6 +140,10 @@ func TestUnversionedClientFallsBackToJuneProtocolOnVersionNegotiationFailure(t *
 					return
 				}
 				defer r.Body.Close()
+				accept := r.Header.Get("Accept")
+				if !strings.Contains(accept, "application/json") || !strings.Contains(accept, "text/event-stream") {
+					t.Errorf("streamable Accept header = %q; want JSON and event stream", accept)
+				}
 				var request struct {
 					ID     json.RawMessage `json:"id"`
 					Method string          `json:"method"`
