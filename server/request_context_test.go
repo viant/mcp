@@ -2,82 +2,86 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"testing"
-
-	"github.com/stretchr/testify/require"
+	"errors"
 	"github.com/viant/jsonrpc"
+	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/schema"
+	protocolserver "github.com/viant/mcp-protocol/server"
+	"testing"
 )
 
-func TestPrepareProtocolRequestKeepsCapabilitiesRequestScoped(t *testing.T) {
-	handler := &Handler{}
-	withRoots := true
-	first := julyRequestParams(t, schema.ClientCapabilities{Roots: &schema.ClientCapabilitiesRoots{ListChanged: &withRoots}})
-	firstCtx, version, rpcErr := handler.prepareProtocolRequest(context.Background(), &jsonrpc.Request{Method: schema.MethodToolsList, Params: first})
-	require.Nil(t, rpcErr)
-	require.Equal(t, schema.LatestProtocolVersion, version)
-	firstInfo, ok := ProtocolRequestFromContext(firstCtx)
-	require.True(t, ok)
-	require.NotNil(t, firstInfo.Capabilities.Roots)
-
-	second := julyRequestParams(t, schema.ClientCapabilities{})
-	secondCtx, _, rpcErr := handler.prepareProtocolRequest(context.Background(), &jsonrpc.Request{Method: schema.MethodToolsList, Params: second})
-	require.Nil(t, rpcErr)
-	secondInfo, ok := ProtocolRequestFromContext(secondCtx)
-	require.True(t, ok)
-	require.Nil(t, secondInfo.Capabilities.Roots)
-	require.NotNil(t, firstInfo.Capabilities.Roots)
-	require.Nil(t, handler.clientInitialize)
+type requestScopedHandler struct {
+	protocolserver.Handler
+	observed func(context.Context) bool
 }
 
-func TestPrepareProtocolRequestNormalizesLegacyMeta(t *testing.T) {
-	testCases := []struct {
-		name string
-		meta map[string]interface{}
-	}{
-		{
-			name: "progress token only",
-			meta: map[string]interface{}{"progressToken": float64(1)},
-		},
-		{
-			name: "explicit legacy version",
-			meta: map[string]interface{}{
-				"io.modelcontextprotocol/protocolVersion": schema.LegacyProtocolVersion,
-				"progressToken": float64(1),
-			},
-		},
+func (h *requestScopedHandler) Implements(string) bool { return false }
+func (h *requestScopedHandler) ImplementsContext(ctx context.Context, _ string) bool {
+	return h.observed(ctx)
+}
+func (h *requestScopedHandler) CallTool(ctx context.Context, _ *jsonrpc.TypedRequest[*schema.CallToolRequest]) (*schema.CallToolResult, *jsonrpc.Error) {
+	if !h.observed(ctx) {
+		return nil, jsonrpc.NewInternalError("request snapshot missing", nil)
 	}
+	return &schema.CallToolResult{}, nil
+}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			raw, err := json.Marshal(map[string]interface{}{
-				"_meta":     testCase.meta,
-				"arguments": map[string]interface{}{},
-				"name":      "AdHierarchy",
-			})
-			require.NoError(t, err)
-			request := &jsonrpc.Request{Method: schema.MethodToolsCall, Params: raw}
+func TestRequestContextPrecedesAvailabilityAndDispatch(t *testing.T) {
+	type key struct{}
+	h := newMissingToolHandler(t, WithRequestContext(func(ctx context.Context) (context.Context, error) { return context.WithValue(ctx, key{}, true), nil }))
+	observed := 0
+	h.handler = &requestScopedHandler{Handler: h.handler, observed: func(ctx context.Context) bool {
+		value, _ := ctx.Value(key{}).(bool)
+		if value {
+			observed++
+		}
+		return value
+	}}
+	request, err := jsonrpc.NewRequest(schema.MethodToolsCall, &schema.CallToolRequestParams{Name: "dynamic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := &jsonrpc.Response{}
+	h.Serve(context.Background(), request, response)
+	if response.Error != nil || observed != 2 {
+		t.Fatalf("error=%v observations=%d", response.Error, observed)
+	}
+}
 
-			_, version, rpcErr := (&Handler{}).prepareProtocolRequest(context.Background(), request)
-			require.Nil(t, rpcErr)
-			require.Equal(t, schema.LegacyProtocolVersion, version)
-
-			var params schema.CallToolRequestParams
-			require.NoError(t, json.Unmarshal(request.Params, &params))
-			require.NotNil(t, params.Meta.ProgressToken)
-			require.Equal(t, schema.LegacyProtocolVersion, params.Meta.IoModelcontextprotocolProtocolVersion)
+func TestRequestContextPreparation(t *testing.T) {
+	type key struct{}
+	for _, test := range []struct {
+		name       string
+		fail       bool
+		nilContext bool
+	}{{name: "prepared"}, {name: "error", fail: true}, {name: "nil", nilContext: true}} {
+		t.Run(test.name, func(t *testing.T) {
+			authorized := false
+			h := newMissingToolHandler(t, WithToolProtocolErrors(), WithRequestContext(func(ctx context.Context) (context.Context, error) {
+				if test.fail {
+					return nil, errors.New("private secret")
+				}
+				if test.nilContext {
+					return nil, nil
+				}
+				return context.WithValue(ctx, key{}, true), nil
+			}), WithJRPCAuthorizer(func(ctx context.Context, _ *jsonrpc.Request, _ *jsonrpc.Response) (*authorization.Token, error) {
+				authorized, _ = ctx.Value(key{}).(bool)
+				return nil, nil
+			}))
+			request, err := jsonrpc.NewRequest(schema.MethodToolsCall, &schema.CallToolRequestParams{Name: "missing"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := &jsonrpc.Response{}
+			h.Serve(context.Background(), request, response)
+			if test.fail || test.nilContext {
+				if authorized || response.Error == nil || response.Error.Message != "request context preparation failed" {
+					t.Fatalf("authorized=%v response=%+v", authorized, response)
+				}
+			} else if !authorized || response.Error == nil || response.Error.Code != jsonrpc.MethodNotFound {
+				t.Fatalf("authorized=%v response=%+v", authorized, response)
+			}
 		})
 	}
-}
-
-func julyRequestParams(t *testing.T, capabilities schema.ClientCapabilities) json.RawMessage {
-	raw, err := json.Marshal(map[string]interface{}{
-		"_meta": map[string]interface{}{
-			"io.modelcontextprotocol/clientCapabilities": capabilities,
-			"io.modelcontextprotocol/protocolVersion":    schema.LatestProtocolVersion,
-		},
-	})
-	require.NoError(t, err)
-	return raw
 }

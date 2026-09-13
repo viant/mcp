@@ -24,10 +24,12 @@ func TestListenAcknowledgesBeforeClosing(t *testing.T) {
 	notifier := &subscriptionNotifier{notifications: make(chan *jsonrpc.Notification, 1)}
 	handler := &Handler{Notifier: notifier, Server: &Server{info: schema.Implementation{Name: "test", Version: "1"}}}
 	params := schema.SubscriptionsListenRequestParams{Notifications: schema.SubscriptionFilter{}}
+	params.Meta.IoModelcontextprotocolProtocolVersion = schema.LatestProtocolVersion
 	raw, err := json.Marshal(params)
 	require.NoError(t, err)
 	request := &jsonrpc.Request{Id: 7, Jsonrpc: jsonrpc.Version, Method: schema.MethodSubscriptionsListen, Params: raw}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	resultCh := make(chan *schema.SubscriptionsListenResult, 1)
 	go func() {
 		result, rpcErr := handler.Listen(ctx, request)

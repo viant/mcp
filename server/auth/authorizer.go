@@ -48,7 +48,9 @@ func (s *Service) EnsureAuthorized(ctx context.Context, request *jsonrpc.Request
 		}
 		s.unauthorized(response, s.Policy.Tools[p.Name])
 	case schema.MethodResourcesRead:
-		params := &schema.ReadResourceRequestParams{}
+		params := &struct {
+			Uri string `json:"uri"`
+		}{}
 		if !schema.MustParseParams(request, response, params) {
 			return nil, nil
 		}

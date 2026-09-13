@@ -31,6 +31,14 @@ type Handler struct {
 
 // Serve handles incoming JSON-RPC requests
 func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, response *jsonrpc.Response) {
+	if h.requestContext != nil {
+		prepared, err := h.requestContext(parent)
+		if err != nil || prepared == nil {
+			response.Error = jsonrpc.NewInternalError("request context preparation failed", nil)
+			return
+		}
+		parent = prepared
+	}
 	// Check for valid JSONRPC version
 	if jsonrpc.Version != request.Jsonrpc {
 		response.Error = jsonrpc.NewInvalidRequest("invalid JSON-RPC version", nil)
@@ -56,7 +64,13 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	case schema.MethodInitialize, schema.MethodServerDiscover, schema.MethodSubscriptionsListen, schema.MethodPing:
 	case schema.MethodLoggingSetLevel:
 	default:
-		if !h.handler.Implements(request.Method) {
+		implemented := h.handler.Implements(request.Method)
+		if contextual, ok := h.handler.(interface {
+			ImplementsContext(context.Context, string) bool
+		}); ok {
+			implemented = contextual.ImplementsContext(parent, request.Method)
+		}
+		if !implemented {
 			response.Error = jsonrpc.NewMethodNotFound(fmt.Sprintf("method: %v not found", request.Method), request.Params)
 			return
 		}

@@ -87,14 +87,21 @@ func (s *Service) extractJSONRPCRequest(r *http.Request) ([]byte, *jsonrpc.Reque
 func (s *Service) resolveAuthorizationRule(jRequest *jsonrpc.Request) (*authorization.Authorization, string) {
 	switch jRequest.Method {
 	case schema.MethodResourcesRead:
-		params := &schema.ReadResourceRequestParams{}
+		// Authorization needs only the resource identity. Decoding the complete
+		// versioned request schema here would make unrelated metadata requirements
+		// bypass per-resource rules for otherwise valid older protocol requests.
+		params := &struct {
+			Uri string `json:"uri"`
+		}{}
 		if err := json.Unmarshal(jRequest.Params, params); err == nil {
 			if rule, ok := s.Policy.Resources[params.Uri]; ok {
 				return rule, params.Uri
 			}
 		}
 	case schema.MethodToolsCall:
-		params := &schema.CallToolRequestParams{}
+		params := &struct {
+			Name string `json:"name"`
+		}{}
 		if err := json.Unmarshal(jRequest.Params, params); err == nil {
 			if rule, ok := s.Policy.Tools[params.Name]; ok {
 				return rule, "tool/" + params.Name

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -139,4 +141,75 @@ func resourcePolicy() *authorization.Policy {
 		protectedResourceURI:        rule,
 		protectedEscapedResourceURI: rule,
 	}}
+}
+
+func TestMiddlewareSelectsRulesIndependentlyOfProtocolMetadata(t *testing.T) {
+	for _, kind := range []string{"resource", "tool"} {
+		for _, withMeta := range []bool{false, true} {
+			for _, authorized := range []bool{false, true} {
+				name := fmt.Sprintf("%s/meta=%t/authorized=%t", kind, withMeta, authorized)
+				t.Run(name, func(t *testing.T) {
+					policy := resourcePolicy()
+					method := schema.MethodResourcesRead
+					params := map[string]interface{}{"uri": protectedResourceURI}
+					if kind == "tool" {
+						method = schema.MethodToolsCall
+						params = map[string]interface{}{"name": "protected", "arguments": map[string]interface{}{}}
+						policy.Tools = map[string]*authorization.Authorization{"protected": policy.Resources[protectedResourceURI]}
+						policy.Resources = nil
+					}
+					if withMeta {
+						params["_meta"] = map[string]interface{}{"io.modelcontextprotocol/protocolVersion": schema.LatestProtocolVersion, "io.modelcontextprotocol/clientCapabilities": map[string]interface{}{}}
+					}
+					service, err := New(&Config{Policy: policy})
+					if err != nil {
+						t.Fatal(err)
+					}
+					rpcRequest, err := jsonrpc.NewRequest(method, params)
+					if err != nil {
+						t.Fatal(err)
+					}
+					rpcResponse := &jsonrpc.Response{}
+					rpcContext := context.Background()
+					if authorized {
+						rpcContext = context.WithValue(rpcContext, authorization.TokenKey, &authorization.Token{Token: "Bearer test"})
+					}
+					if _, err := service.EnsureAuthorized(rpcContext, rpcRequest, rpcResponse); err != nil {
+						t.Fatal(err)
+					}
+					if authorized && rpcResponse.Error != nil {
+						t.Fatalf("authorized JSON-RPC error=%v", rpcResponse.Error)
+					}
+					if !authorized && (rpcResponse.Error == nil || rpcResponse.Error.Code != schema.Unauthorized) {
+						t.Fatalf("expected unauthorized JSON-RPC error, got %v", rpcResponse.Error)
+					}
+					payload, err := json.Marshal(map[string]interface{}{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+					if err != nil {
+						t.Fatal(err)
+					}
+					request := httptest.NewRequest(http.MethodPost, "http://mcp.example/mcp", bytes.NewReader(payload))
+					if authorized {
+						request.Header.Set("Authorization", "Bearer test")
+					}
+					recorder := httptest.NewRecorder()
+					called := false
+					service.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						called = true
+						body, err := io.ReadAll(r.Body)
+						if err != nil || !bytes.Equal(body, payload) {
+							t.Fatal("middleware changed request body")
+						}
+						w.WriteHeader(http.StatusNoContent)
+					})).ServeHTTP(recorder, request)
+					if authorized {
+						if !called || recorder.Code != http.StatusNoContent {
+							t.Fatalf("authorized response=%d called=%t", recorder.Code, called)
+						}
+					} else if called || recorder.Code != http.StatusUnauthorized || recorder.Header().Get("WWW-Authenticate") == "" {
+						t.Fatalf("unprotected response=%d called=%t", recorder.Code, called)
+					}
+				})
+			}
+		}
+	}
 }

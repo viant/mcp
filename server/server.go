@@ -26,6 +26,7 @@ type Server struct {
 	corsConfig                *Cors
 	authorizer                func(next http.Handler) http.Handler
 	jRPCAuthorizer            auth.JRPCAuthorizer
+	requestContext            func(context.Context) (context.Context, error)
 	stdioServer
 	httpServer
 }
