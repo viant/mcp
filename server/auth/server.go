@@ -85,7 +85,21 @@ func (s *Service) extractJSONRPCRequest(r *http.Request) ([]byte, *jsonrpc.Reque
 }
 
 func (s *Service) resolveAuthorizationRule(jRequest *jsonrpc.Request) (*authorization.Authorization, string) {
+	if !s.RequireResourceAuthorization && (jRequest.Method == schema.MethodResourcesList || jRequest.Method == schema.MethodResourcesTemplatesList) {
+		return nil, ""
+	}
 	switch jRequest.Method {
+	case schema.MethodSkillsList, schema.MethodSkillsGet, schema.MethodResourcesList, schema.MethodResourcesTemplatesList:
+		rules := s.resourceRules(jRequest)
+		if len(rules) == 0 {
+			return nil, ""
+		}
+		for uri, rule := range s.Policy.Resources {
+			if rule == rules[0] {
+				return rule, uri
+			}
+		}
+		return rules[0], ""
 	case schema.MethodResourcesRead:
 		// Authorization needs only the resource identity. Decoding the complete
 		// versioned request schema here would make unrelated metadata requirements

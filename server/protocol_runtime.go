@@ -156,6 +156,22 @@ func (h *Handler) finalizeResult(version string, result interface{}) {
 		meta = &schema.ResultMetaObject{IoModelcontextprotocolServerInfo: &info}
 	}
 	switch value := result.(type) {
+	case *schema.ListSkillsResult:
+		value.ResultType = completeResultType
+		if version == schema.LatestProtocolVersion {
+			value.Meta = meta
+			ttl := 0
+			value.TtlMs = &ttl
+			value.CacheScope = schema.CacheableResultCacheScopePrivate
+		} else {
+			value.TtlMs = nil
+			value.CacheScope = ""
+		}
+	case *schema.GetSkillResult:
+		value.ResultType = completeResultType
+		if version == schema.LatestProtocolVersion {
+			value.Meta = meta
+		}
 	case *schema.ListToolsResult:
 		if value.Meta == nil {
 			value.Meta = meta

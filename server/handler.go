@@ -114,6 +114,12 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	case schema.MethodResourcesList:
 		result, err := h.ListResources(ctx, request)
 		h.setResponse(protocolVersion, response, result, err)
+	case schema.MethodSkillsList:
+		result, err := h.ListSkills(ctx, request)
+		h.setResponse(protocolVersion, response, result, err)
+	case schema.MethodSkillsGet:
+		result, err := h.GetSkill(ctx, request)
+		h.setResponse(protocolVersion, response, result, err)
 	case schema.MethodResourcesTemplatesList:
 		result, err := h.ListResourceTemplates(ctx, request)
 		h.setResponse(protocolVersion, response, result, err)

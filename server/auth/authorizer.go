@@ -25,6 +25,13 @@ func (s *Service) EnsureAuthorized(ctx context.Context, request *jsonrpc.Request
 	}
 
 	var token string
+	credential := p.AuthMeta.Authorization
+	if value, ok := ctx.Value(authorization.TokenKey).(*authorization.Token); ok {
+		credential = value
+	}
+	if s.authorizeResources(ctx, request, response, credential) {
+		return credential, nil
+	}
 	if value := ctx.Value(authorization.TokenKey); value != nil {
 		if _, ok := value.(*authorization.Token); ok { //token is already in context
 			return nil, nil

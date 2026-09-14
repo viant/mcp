@@ -7,9 +7,13 @@ import (
 
 // Config is used to configure the auth server
 type Config struct {
-	Policy             *authorization.Policy
-	BackendForFrontend *BackendForFrontend
-	MediationMode      string //HTTP, JSONRPC
+	// RequireResourceAuthorization protects static content which has no business
+	// handler to verify forwarded credentials. Skills metadata always requires it.
+	RequireResourceAuthorization bool
+	AuthorizeResource            ResourceAuthorizer
+	Policy                       *authorization.Policy
+	BackendForFrontend           *BackendForFrontend
+	MediationMode                string //HTTP, JSONRPC
 
 }
 
