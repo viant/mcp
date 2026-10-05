@@ -96,7 +96,7 @@ func (r *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// 2) If it wasn’t a 401, just return it.
-	if resp.StatusCode != http.StatusUnauthorized {
+	if resp.StatusCode != http.StatusUnauthorized || config.NoRetry(req.Context()) {
 		return resp, nil
 	}
 	// Close the prior body so we don’t leak.

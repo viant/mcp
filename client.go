@@ -669,6 +669,19 @@ func wrapContextAuthHTTPClient(client *http.Client) *http.Client {
 	}
 	clone := *client
 	clone.Transport = &contextAuthHeaderTransport{base: client.Transport}
+	previousRedirect := client.CheckRedirect
+	clone.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if authcfg.NoRetry(req.Context()) {
+			return http.ErrUseLastResponse
+		}
+		if previousRedirect != nil {
+			return previousRedirect(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
 	return &clone
 }
 

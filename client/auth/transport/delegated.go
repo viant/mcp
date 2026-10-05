@@ -69,7 +69,7 @@ func (r *RoundTripper) eagerRoundTrip(req *http.Request) (*http.Response, error)
 	if err != nil {
 		return nil, err
 	}
-	if response.StatusCode != http.StatusUnauthorized {
+	if response.StatusCode != http.StatusUnauthorized || config.NoRetry(ctx) {
 		return response, nil
 	}
 	debuglog.Printf("[auth-rt] delegated 401 url=%q, refreshing once", req.URL.String())
@@ -114,7 +114,7 @@ func (r *RoundTripper) challengeRoundTrip(req *http.Request) (*http.Response, er
 	if err != nil {
 		return nil, err
 	}
-	if response.StatusCode != http.StatusUnauthorized {
+	if response.StatusCode != http.StatusUnauthorized || config.NoRetry(ctx) {
 		return response, nil
 	}
 	debuglog.Printf("[auth-rt] delegated challenge 401 url=%q, resolving once", req.URL.String())

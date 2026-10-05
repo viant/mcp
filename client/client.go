@@ -487,6 +487,9 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 	}
 	client.withProtocolMeta(req)
 	if ro := NewRequestOptions(options); ro != nil {
+		if ro.NoRetry {
+			ctx = authcfg.WithNoRetry(ctx)
+		}
 		if ro.RequestId != nil {
 			req.Id = ro.RequestId
 		}
@@ -508,7 +511,7 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 		}
 		// Automatic session recovery – if the server has been restarted, the existing session can be lost.
 		// In that case the transport returns an HTTP 404 error containing "session '<id>' not found".
-		if strings.Contains(err.Error(), "session") && strings.Contains(err.Error(), "not found") {
+		if !authcfg.NoRetry(ctx) && strings.Contains(err.Error(), "session") && strings.Contains(err.Error(), "not found") {
 			if recErr := client.reconnectAndInitialize(ctx); recErr == nil {
 				// Construct fresh request to avoid duplicate id after successful reconnect
 				req, _ = jsonrpc.NewRequest(method, parameters)
@@ -550,7 +553,7 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 		}
 	}
 	// Optionally intercept 401 Unauthorized and retry with token
-	if client.authInterceptor != nil {
+	if client.authInterceptor != nil && !authcfg.NoRetry(ctx) {
 		nextReq, interceptErr := client.authInterceptor.Intercept(ctx, req, response)
 		if interceptErr != nil {
 			if authcfg.IsLinkRequired(interceptErr) {

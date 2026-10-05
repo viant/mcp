@@ -11,6 +11,7 @@ import (
 )
 
 type RequestOptions struct {
+	NoRetry        bool
 	RequestId      jsonrpc.RequestId
 	JsonrpcVersion string
 	StringToken    string
@@ -92,3 +93,6 @@ func WithReconnect(reconnect func(ctx context.Context) (transport.Transport, err
 		c.reconnect = reconnect
 	}
 }
+
+// WithNoRetry suppresses automatic remote request replay for this request only.
+func WithNoRetry() RequestOption { return func(options *RequestOptions) { options.NoRetry = true } }
