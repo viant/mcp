@@ -16,6 +16,7 @@ import (
 type ResourceAuthorizer func(context.Context, *authorization.Token, *authorization.Authorization) error
 
 func (s *Service) resourceRules(request *jsonrpc.Request) []*authorization.Authorization {
+	request = skillResourceRequest(request)
 	if s.Policy == nil {
 		return nil
 	}
@@ -53,6 +54,7 @@ func (s *Service) resourceRules(request *jsonrpc.Request) []*authorization.Autho
 }
 
 func (s *Service) authorizeResources(ctx context.Context, request *jsonrpc.Request, response *jsonrpc.Response, token *authorization.Token) bool {
+	request = skillResourceRequest(request)
 	switch request.Method {
 	case schema.MethodSkillsList, schema.MethodSkillsGet:
 	case schema.MethodResourcesRead, schema.MethodResourcesList, schema.MethodResourcesTemplatesList:
@@ -69,4 +71,26 @@ func (s *Service) authorizeResources(ctx context.Context, request *jsonrpc.Reque
 		}
 	}
 	return true
+}
+
+// Skill compatibility tools carry the same protected manifests as native methods.
+// Normalize only reserved bridge names, leaving business tool policy unchanged.
+func skillResourceRequest(request *jsonrpc.Request) *jsonrpc.Request {
+	if request.Method != schema.MethodToolsCall {
+		return request
+	}
+	var params struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	if json.Unmarshal(request.Params, &params) != nil {
+		return request
+	}
+	if params.Name != schema.MethodSkillsList && params.Name != schema.MethodSkillsGet {
+		return request
+	}
+	normalized := *request
+	normalized.Method = params.Name
+	normalized.Params = params.Arguments
+	return &normalized
 }
