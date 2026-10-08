@@ -2,14 +2,18 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/viant/mcp-protocol/schema"
+	mcpclient "github.com/viant/mcp/client"
 	authtransport "github.com/viant/mcp/client/auth/transport"
 )
 
@@ -77,6 +81,72 @@ func TestWrapContextAuthHTTPClient_InjectsBearerHeaderFromContext(t *testing.T) 
 	}
 	if seenAuth != "Bearer token-123" {
 		t.Fatalf("Authorization = %q, want %q", seenAuth, "Bearer token-123")
+	}
+}
+
+func TestBFFUseIDToken_PerCallAuthTokenReachesToolAuthorizationHeader(t *testing.T) {
+	var toolAuthorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var request struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		switch request.Method {
+		case schema.MethodInitialize:
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "bff-id-token-session")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      request.ID,
+				"result": map[string]interface{}{
+					"protocolVersion": schema.LegacyProtocolVersion,
+					"capabilities":    map[string]interface{}{},
+					"serverInfo":      map[string]interface{}{"name": "auth-probe", "version": "1.0"},
+				},
+			})
+		case schema.MethodNotificationInitialized:
+			w.WriteHeader(http.StatusAccepted)
+		case schema.MethodToolsCall:
+			toolAuthorization = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      request.ID,
+				"result":  map[string]interface{}{"content": []interface{}{}},
+			})
+		default:
+			http.Error(w, "unexpected method", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	useBFF := true
+	options := &ClientOptions{
+		Name:            "steward",
+		Version:         "1.0",
+		ProtocolVersion: schema.LegacyProtocolVersion,
+		Transport:       ClientTransport{Type: "streamable", ClientTransportHTTP: ClientTransportHTTP{URL: server.URL}},
+		Auth:            &ClientAuth{BackendForFrontend: &useBFF, UseIdToken: true},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cli, err := NewClientWithContext(ctx, &julyProtocolClientHandler{}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+
+	_, err = cli.CallTool(ctx, &schema.CallToolRequestParams{Name: "ResourceAuthorization"}, mcpclient.WithAuthToken("id-token-123"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if toolAuthorization != "Bearer id-token-123" {
+		t.Fatalf("Authorization = %q, want %q", toolAuthorization, "Bearer id-token-123")
 	}
 }
 
