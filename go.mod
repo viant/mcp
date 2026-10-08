@@ -1,7 +1,5 @@
 module github.com/viant/mcp
 
-replace github.com/viant/mcp-protocol => ../mcp-protocol
-
 go 1.24.0
 
 require (
@@ -12,7 +10,7 @@ require (
 	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1
 	github.com/viant/jsonrpc v0.25.0
-	github.com/viant/mcp-protocol v0.19.0
+	github.com/viant/mcp-protocol v0.19.1-0.20261005144737-c504db7a02bb
 	github.com/viant/scy v0.24.0
 	golang.org/x/oauth2 v0.30.0
 )

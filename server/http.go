@@ -100,7 +100,7 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 		middlewareHandlers = append(middlewareHandlers, s.authorizer)
 	}
 	// Validate MCP-Protocol-Version and set response header
-	middlewareHandlers = append(middlewareHandlers, protocolVersionMiddleware())
+	middlewareHandlers = append(middlewareHandlers, protocolVersionMiddleware(s.maxRequestBodyBytes))
 	middlewareHandlers = append(middlewareHandlers, s.corsHandler)
 	// Validate Origin on all requests (uses configured CORS allowlist)
 	if s.corsConfig != nil {

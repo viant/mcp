@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp/server/auth"
@@ -141,6 +142,18 @@ func WithCustomHTTPHandler(path string, handler http.HandlerFunc) Option {
 func WithProtocolVersion(version string) Option {
 	return func(s *Server) error {
 		s.protocolVersion = version
+		return nil
+	}
+}
+
+// WithMaxRequestBodyBytes selects an explicit bounded HTTP request limit.
+// The default remains 4 MiB. This never disables request-size enforcement.
+func WithMaxRequestBodyBytes(limit int64) Option {
+	return func(s *Server) error {
+		if limit <= 0 || limit > 64<<20 {
+			return fmt.Errorf("MCP request limit must be between 1 byte and 64 MiB")
+		}
+		s.maxRequestBodyBytes = limit
 		return nil
 	}
 }

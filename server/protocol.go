@@ -15,7 +15,7 @@ const maxProtocolRequestBody = 4 << 20
 // protocolVersionMiddleware sets the response MCP-Protocol-Version header.
 // Negotiation should happen at initialize time; transport-level requests should
 // not be rejected solely due to a newer client-advertised version.
-func protocolVersionMiddleware() Middleware {
+func protocolVersionMiddleware(configuredLimit ...int64) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requested := strings.TrimSpace(r.Header.Get(schema.HeaderProtocolVersion))
@@ -28,7 +28,7 @@ func protocolVersionMiddleware() Middleware {
 				return
 			}
 			if r.Method == http.MethodPost && r.Body != nil {
-				body, err := readProtocolRequestBody(w, r)
+				body, err := readProtocolRequestBody(w, r, configuredLimit...)
 				if err != nil {
 					return
 				}
@@ -51,16 +51,20 @@ type protocolHeaderError struct {
 
 func (e *protocolHeaderError) Error() string { return e.message }
 
-func readProtocolRequestBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxProtocolRequestBody+1))
+func readProtocolRequestBody(w http.ResponseWriter, r *http.Request, configuredLimit ...int64) ([]byte, error) {
+	limit := int64(maxProtocolRequestBody)
+	if len(configuredLimit) > 0 && configuredLimit[0] > 0 {
+		limit = configuredLimit[0]
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 	if err != nil {
 		http.Error(w, "failed to read MCP request body", http.StatusBadRequest)
 		return nil, err
 	}
 	_ = r.Body.Close()
-	if len(body) > maxProtocolRequestBody {
+	if int64(len(body)) > limit {
 		http.Error(w, "MCP request body is too large", http.StatusRequestEntityTooLarge)
-		return nil, fmt.Errorf("MCP request body exceeds %d bytes", maxProtocolRequestBody)
+		return nil, fmt.Errorf("MCP request body exceeds %d bytes", limit)
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))

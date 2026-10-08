@@ -14,6 +14,7 @@ import (
 
 // Server represents MCP protocol handler
 type Server struct {
+	maxRequestBodyBytes       int64
 	activeContexts            *syncmap.Map[int, *activeContext]
 	info                      schema.Implementation
 	newServer                 server.NewHandler
