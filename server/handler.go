@@ -85,6 +85,7 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	id := conv.AsInt(request.Id)
 
 	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
 	activeContext, ctx := newActiveContext(ctx, cancel, request)
 
 	if h.authorizer != nil && request.Method != "" {
@@ -101,8 +102,8 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 		}
 	}
 
-	h.activeContexts.Put(id, activeContext)
-	defer h.CancelOperation(id)
+	h.registerOperation(id, activeContext)
+	defer h.completeOperation(id, activeContext)
 
 	switch request.Method {
 	case schema.MethodInitialize:
