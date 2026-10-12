@@ -10,12 +10,14 @@ import (
 	"github.com/viant/mcp/client"
 	"github.com/viant/mcp/server/auth"
 	"net/http"
+	"sync"
 )
 
 // Server represents MCP protocol handler
 type Server struct {
 	maxRequestBodyBytes       int64
 	activeContexts            *syncmap.Map[int, *activeContext]
+	activeContextsMu          sync.Mutex
 	info                      schema.Implementation
 	newServer                 server.NewHandler
 	instructions              *string
@@ -33,8 +35,27 @@ type Server struct {
 }
 
 func (s *Server) CancelOperation(id int) {
+	s.activeContextsMu.Lock()
+	defer s.activeContextsMu.Unlock()
 	if active, ok := s.activeContexts.Get(id); ok {
 		active.CancelFunc()
+		s.activeContexts.Delete(id)
+	}
+}
+
+func (s *Server) registerOperation(id int, active *activeContext) {
+	s.activeContextsMu.Lock()
+	defer s.activeContextsMu.Unlock()
+	s.activeContexts.Put(id, active)
+}
+
+// Completion belongs to the request, even when another transport uses the same
+// numeric request ID. Never cancel or remove that other request's registration.
+func (s *Server) completeOperation(id int, active *activeContext) {
+	active.CancelFunc()
+	s.activeContextsMu.Lock()
+	defer s.activeContextsMu.Unlock()
+	if current, ok := s.activeContexts.Get(id); ok && current == active {
 		s.activeContexts.Delete(id)
 	}
 }
