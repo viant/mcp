@@ -28,6 +28,7 @@ type Server struct {
 	authorizer                func(next http.Handler) http.Handler
 	jRPCAuthorizer            auth.JRPCAuthorizer
 	requestContext            func(context.Context) (context.Context, error)
+	onSessionClose            func(transport.Notifier)
 	stdioServer
 	httpServer
 }

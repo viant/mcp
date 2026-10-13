@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/viant/jsonrpc/transport"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp/server/auth"
@@ -20,6 +21,12 @@ func WithRequestContext(prepare func(context.Context) (context.Context, error)) 
 
 // Option is a function that configures the handler.
 type Option func(s *Server) error
+
+// WithOnSessionClose observes final transport-session removal. A temporary
+// streaming disconnect remains resumable and does not close the session.
+func WithOnSessionClose(closed func(transport.Notifier)) Option {
+	return func(s *Server) error { s.onSessionClose = closed; return nil }
+}
 
 // WithToolProtocolErrors preserves JSON-RPC errors returned by tools/call.
 // The default converts those errors into CallToolResult values for compatibility.

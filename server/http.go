@@ -7,6 +7,7 @@ import (
 
 	"fmt"
 	streamauth "github.com/viant/jsonrpc/transport/server/auth"
+	"github.com/viant/jsonrpc/transport/server/base"
 	"github.com/viant/jsonrpc/transport/server/http/sse"
 	"github.com/viant/jsonrpc/transport/server/http/streamable"
 	"github.com/viant/mcp-protocol/schema"
@@ -65,8 +66,17 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 	}
 
 	// SSE and Streamable handlers with configured URIs
+	closed := func(session *base.Session) {
+		if s.onSessionClose == nil || session == nil {
+			return
+		}
+		if handler, ok := session.Handler.(*Handler); ok {
+			s.onSessionClose(handler.Notifier)
+		}
+	}
 	// Enable BFF auth cookie (opaque grant) and handshake rehydrate; do NOT set transport session in cookies.
 	s.sseHandler = sse.New(s.NewHandler,
+		sse.WithOnSessionClose(closed),
 		sse.WithURI(s.sseURI),
 		sse.WithMessageURI(s.sseMessageURI),
 		sse.WithKeepAliveInterval(2*time.Second),
@@ -76,6 +86,7 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 		sse.WithRehydrateOnHandshake(true),
 	)
 	s.streamingHandler = streamable.New(s.NewHandler,
+		streamable.WithOnSessionClose(closed),
 		streamable.WithURI(s.streamableURI),
 		streamable.WithKeepAliveInterval(2*time.Second),
 		streamable.WithStatelessResolver(func(request *http.Request) bool {
