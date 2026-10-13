@@ -2,10 +2,14 @@ package store
 
 import (
 	"crypto"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"github.com/viant/afs/http"
 	"github.com/viant/afs/url"
 	"github.com/viant/mcp-protocol/oauth2/meta"
 	"golang.org/x/oauth2"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -33,7 +37,8 @@ type MemoryStoreOption func(*memoryStore)
 func WithClientConfig(client *oauth2.Config) MemoryStoreOption {
 	return func(m *memoryStore) {
 		issuer, _ := url.Base(client.Endpoint.AuthURL, http.SecureScheme)
-		m.clients[normalizeIssuer(issuer)] = client
+		m.clients[normalizeIssuer(issuer)] = cloneClientConfig(client)
+		m.credentialRevision++
 	}
 }
 
@@ -59,11 +64,64 @@ func InstallClientConfig(s Store, client *oauth2.Config) error {
 }
 
 type memoryStore struct {
-	mu               sync.RWMutex
-	issuerMetadata   map[string]*meta.AuthorizationServerMetadata
-	issuerPublicKeys map[string]map[string]crypto.PublicKey
-	clients          map[string]*oauth2.Config
-	tokens           map[TokenKey]*oauth2.Token
+	credentialRevision uint64
+	mu                 sync.RWMutex
+	issuerMetadata     map[string]*meta.AuthorizationServerMetadata
+	issuerPublicKeys   map[string]map[string]crypto.PublicKey
+	clients            map[string]*oauth2.Config
+	tokens             map[TokenKey]*oauth2.Token
+}
+
+// CredentialScope witnesses stored authentication fields without exposing them.
+// Token extras stay backward compatible; the only extra used for authentication,
+// id_token, is included because oauth2.Token keeps extras behind an opaque field.
+func (m *memoryStore) CredentialScope() (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	type storedToken struct {
+		Key     TokenKey
+		Token   *oauth2.Token
+		IDToken string
+	}
+	tokens := make([]storedToken, 0, len(m.tokens))
+	for key, token := range m.tokens {
+		idToken := ""
+		if token != nil && token.Extra("id_token") != nil {
+			var ok bool
+			idToken, ok = token.Extra("id_token").(string)
+			if !ok {
+				return "", false
+			}
+		}
+		tokens = append(tokens, storedToken{key, token, idToken})
+	}
+	sort.Slice(tokens, func(i, j int) bool {
+		if tokens[i].Key.Issuer == tokens[j].Key.Issuer {
+			return tokens[i].Key.Scopes < tokens[j].Key.Scopes
+		}
+		return tokens[i].Key.Issuer < tokens[j].Key.Issuer
+	})
+	raw, err := json.Marshal([]any{m.credentialRevision, tokens, m.clients})
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(raw)), true
+}
+
+func cloneToken(token *oauth2.Token) *oauth2.Token {
+	if token == nil {
+		return nil
+	}
+	result := *token
+	return &result
+}
+func cloneClientConfig(client *oauth2.Config) *oauth2.Config {
+	if client == nil {
+		return nil
+	}
+	result := *client
+	result.Scopes = append([]string(nil), client.Scopes...)
+	return &result
 }
 
 func (m *memoryStore) LookupToken(key TokenKey) (*oauth2.Token, bool) {
@@ -71,7 +129,7 @@ func (m *memoryStore) LookupToken(key TokenKey) (*oauth2.Token, bool) {
 	defer m.mu.RUnlock()
 	if m.tokens != nil {
 		if token, ok := m.tokens[key]; ok {
-			return token, true
+			return cloneToken(token), true
 		}
 	}
 	return nil, false
@@ -83,7 +141,8 @@ func (m *memoryStore) AddToken(key TokenKey, token *oauth2.Token) error {
 	if m.tokens == nil {
 		m.tokens = map[TokenKey]*oauth2.Token{}
 	}
-	m.tokens[key] = token
+	m.tokens[key] = cloneToken(token)
+	m.credentialRevision++
 	return nil
 }
 
@@ -93,7 +152,7 @@ func (m *memoryStore) LookupClientConfig(issuer string) (*oauth2.Config, bool) {
 
 	if m.clients != nil {
 		if id, ok := m.clients[normalizeIssuer(issuer)]; ok {
-			return id, true
+			return cloneClientConfig(id), true
 		}
 	}
 	return nil, false
@@ -106,7 +165,8 @@ func normalizeIssuer(iss string) string {
 func (m *memoryStore) AddClientConfig(issuer string, client *oauth2.Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.clients[normalizeIssuer(issuer)] = client
+	m.clients[normalizeIssuer(issuer)] = cloneClientConfig(client)
+	m.credentialRevision++
 	return nil
 }
 
