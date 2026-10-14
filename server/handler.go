@@ -30,6 +30,8 @@ type Handler struct {
 	toolProtocolErrors bool
 	Initialized        bool
 	err                error
+	operationsMu       sync.Mutex
+	operations         map[int]*activeContext
 }
 
 // Serve handles incoming JSON-RPC requests
