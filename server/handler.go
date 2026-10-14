@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
@@ -16,6 +17,8 @@ import (
 
 // Handler represents handler
 type Handler struct {
+	subscriptions *subscriptionNotifications
+	closeOnce     sync.Once
 	transport.Notifier
 	*Logger
 	*Server
@@ -52,6 +55,9 @@ func (h *Handler) Serve(parent context.Context, request *jsonrpc.Request, respon
 	if protocolErr != nil {
 		response.Error = protocolErr
 		return
+	}
+	if h.subscriptions != nil {
+		h.subscriptions.setLatest(protocolVersion == schema.LatestProtocolVersion)
 	}
 	if protocolVersion == schema.LatestProtocolVersion {
 		switch request.Method {
@@ -199,4 +205,14 @@ func (h *Handler) OnNotification(ctx context.Context, notification *jsonrpc.Noti
 		return
 	}
 	h.handler.OnNotification(ctx, notification)
+}
+
+// Close ends this handler's owning transport session once. HTTP uses its native
+// final-session hook; in-process adapters may explicitly close their handler.
+func (h *Handler) Close() {
+	h.closeOnce.Do(func() {
+		if h.onSessionClose != nil {
+			h.onSessionClose(h.Notifier)
+		}
+	})
 }

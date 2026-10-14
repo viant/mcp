@@ -71,7 +71,7 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 			return
 		}
 		if handler, ok := session.Handler.(*Handler); ok {
-			s.onSessionClose(handler.Notifier)
+			handler.Close()
 		}
 	}
 	// Enable BFF auth cookie (opaque grant) and handshake rehydrate; do NOT set transport session in cookies.

@@ -40,11 +40,14 @@ func (h *Handler) Listen(ctx context.Context, request *jsonrpc.Request) (*schema
 	if h.Notifier == nil {
 		return nil, jsonrpc.NewInternalError("subscriptions/listen requires a notification-capable transport", nil)
 	}
-	if err = h.Notifier.Notify(ctx, &jsonrpc.Notification{
-		Jsonrpc: jsonrpc.Version,
-		Method:  schema.MethodNotificationSubscriptionsAcknowledged,
-		Params:  raw,
-	}); err != nil {
+	ack := &jsonrpc.Notification{Jsonrpc: jsonrpc.Version, Method: schema.MethodNotificationSubscriptionsAcknowledged, Params: raw}
+	if h.subscriptions != nil {
+		stop, err := h.subscriptions.open(ctx, subscriptionID, accepted, ack)
+		if err != nil {
+			return nil, jsonrpc.NewInternalError(err.Error(), nil)
+		}
+		defer stop()
+	} else if err = h.Notifier.Notify(ctx, ack); err != nil {
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
 
