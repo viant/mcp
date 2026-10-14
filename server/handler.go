@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/viant/jsonrpc"
 	"github.com/viant/jsonrpc/transport"
@@ -27,6 +28,8 @@ type Handler struct {
 	toolProtocolErrors bool
 	Initialized        bool
 	err                error
+	operationsMu       sync.Mutex
+	operations         map[int]*activeContext
 }
 
 // Serve handles incoming JSON-RPC requests
