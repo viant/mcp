@@ -55,3 +55,28 @@ func EffectiveUserID(ctx context.Context) string { return iauth.EffectiveUserID(
 
 // VerifiedProvider reads the provider identifier established by host ingress.
 func VerifiedProvider(ctx context.Context) string { return iauth.Provider(ctx) }
+
+// UserInfo carries host-provided profile identifiers. These values are token
+// partitioning metadata and never substitute for an authorization provider.
+type UserInfo = iauth.UserInfo
+
+func UserFromContext(ctx context.Context) *UserInfo { return iauth.User(ctx) }
+func WithUserInfo(ctx context.Context, info *UserInfo) context.Context {
+	return iauth.WithUserInfo(ctx, info)
+}
+func Provider(ctx context.Context) string { return iauth.Provider(ctx) }
+func WithProvider(ctx context.Context, value string) context.Context {
+	return iauth.WithProvider(ctx, value)
+}
+func WithCanonicalUserID(ctx context.Context, value string) context.Context {
+	return iauth.WithCanonicalUserID(ctx, value)
+}
+func Bearer(ctx context.Context) string { return iauth.Bearer(ctx) }
+func WithBearer(ctx context.Context, value string) context.Context {
+	return iauth.WithBearer(ctx, value)
+}
+func WithIDToken(ctx context.Context, value string) context.Context {
+	return iauth.WithIDToken(ctx, value)
+}
+func TokensFromContext(ctx context.Context) *scyauth.Token { return iauth.TokensFromContext(ctx) }
+func WithoutTokens(ctx context.Context) context.Context    { return iauth.WithoutTokens(ctx) }
