@@ -16,25 +16,6 @@ type Adapter struct {
 	nextRequestID uint64
 }
 
-func decodeAdapterResult(raw json.RawMessage, destination interface{}) error {
-	var object map[string]interface{}
-	if len(raw) > 0 && json.Unmarshal(raw, &object) == nil && object != nil {
-		if value, ok := object["resultType"]; !ok || value == "" {
-			object["resultType"] = completeResultType
-		}
-		if value, ok := object["cacheScope"]; !ok || value == "" {
-			object["cacheScope"] = "private"
-		}
-		if _, ok := object["ttlMs"]; !ok {
-			object["ttlMs"] = 0
-		}
-		if normalized, err := json.Marshal(object); err == nil {
-			raw = normalized
-		}
-	}
-	return json.Unmarshal(raw, destination)
-}
-
 // Discover exposes the July stateless discovery operation for in-process
 // clients.
 func (a *Adapter) Discover(ctx context.Context, options ...client.RequestOption) (*schema.DiscoverResult, error) {
