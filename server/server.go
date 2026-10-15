@@ -30,6 +30,7 @@ type Server struct {
 	authorizer                func(next http.Handler) http.Handler
 	jRPCAuthorizer            auth.JRPCAuthorizer
 	requestContext            func(context.Context) (context.Context, error)
+	onSessionClose            func(transport.Notifier)
 	stdioServer
 	httpServer
 }
@@ -74,10 +75,14 @@ func (s *Server) newHandler(ctx context.Context, transport transport.Transport) 
 		clientFeatures:     make(map[string]bool),
 		toolProtocolErrors: s.toolProtocolErrors,
 	}
+	if transport != nil {
+		ret.subscriptions = &subscriptionNotifications{raw: transport}
+		ret.Notifier = ret.subscriptions
+	}
 	ret.Logger = NewLogger(ret.loggerName, &ret.loggingLevel, ret.Notifier)
 
 	aClient := NewClient(ret.clientFeatures, transport)
-	ret.handler, ret.err = s.newServer(ctx, transport, ret.Logger, aClient)
+	ret.handler, ret.err = s.newServer(ctx, ret.Notifier, ret.Logger, aClient)
 	return ret
 }
 

@@ -28,6 +28,7 @@ type Client struct {
 	loggingLevel    *schema.LoggingLevel
 	transport       transport.Transport // server version
 	initialized     bool
+	negotiated      *schema.InitializeResult
 	clientHandler   pclient.Handler
 	authInterceptor *auth.Authorizer
 	stateMu         sync.RWMutex
@@ -61,12 +62,16 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 		c.initialized = true
 		c.stateMu.Unlock()
 		c.startPinger()
-		return &schema.InitializeResult{
+		result := &schema.InitializeResult{
 			Capabilities:    discovered.Capabilities,
 			Instructions:    discovered.Instructions,
 			ProtocolVersion: schema.LatestProtocolVersion,
 			ServerInfo:      implementationFromResultMeta(discovered.Meta),
-		}, nil
+		}
+		c.stateMu.Lock()
+		c.negotiated = result
+		c.stateMu.Unlock()
+		return result, nil
 	}
 
 	c.stateMu.RLock()
@@ -118,6 +123,7 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 	}
 	c.stateMu.Lock()
 	c.initialized = true
+	c.negotiated = &result
 	c.stateMu.Unlock()
 	// Start background pinger if configured
 	c.startPinger()
@@ -696,4 +702,21 @@ func isStdio(t transport.Transport) bool {
 		return true
 	}
 	return false
+}
+
+// NegotiatedServer returns detached capability/protocol state from the completed
+// handshake. It performs no discovery or metadata RPC.
+func (c *Client) NegotiatedServer() (*schema.InitializeResult, error) {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	if c.negotiated == nil {
+		return nil, errUninitialized
+	}
+	raw, err := json.Marshal(c.negotiated)
+	if err != nil {
+		return nil, err
+	}
+	var result schema.InitializeResult
+	err = json.Unmarshal(raw, &result)
+	return &result, err
 }
