@@ -27,6 +27,11 @@ type ResolvedServiceIdentity struct {
 }
 
 type MCPClient struct {
+	// MetadataCacheIgnoredCookies lists explicitly known routing-only cookies.
+	// They are still sent normally; only metadata cache identity ignores them.
+	// Never include authentication or application-session cookies. Empty tracks all cookies.
+	MetadataCacheIgnoredCookies []string `json:"metadataCacheIgnoredCookies,omitempty" yaml:"metadataCacheIgnoredCookies,omitempty"`
+
 	ResolvedIdentity  *ResolvedServiceIdentity `json:"-" yaml:"-"`
 	ExecutionLocation string                   `json:"executionLocation,omitempty" yaml:"executionLocation,omitempty"`
 	BrowserTransport  *BrowserTransport        `json:"browserTransport,omitempty" yaml:"browserTransport,omitempty"`

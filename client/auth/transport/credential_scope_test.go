@@ -103,3 +103,32 @@ func TestCredentialScopeDetectsStoreReplacementAtSameRevision(t *testing.T) {
 		t.Fatal("different store credentials at equal revision collided")
 	}
 }
+
+func TestMetadataScopeIgnoresOnlyDeclaredRoutingCookies(t *testing.T) {
+	target, _ := url.Parse("https://fixture.test/mcp")
+	jar, _ := cookiejar.New(nil)
+	rt, err := New(WithCookieJar(jar))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jar.SetCookies(target, []*http.Cookie{{Name: "affinity", Value: "route-one"}, {Name: "session", Value: "user-one"}})
+	allBefore, _ := rt.CredentialScope(target)
+	before, ok := rt.CredentialScopeForMetadata(target, []string{"affinity"})
+	if !ok {
+		t.Fatal("missing credential witness")
+	}
+	jar.SetCookies(target, []*http.Cookie{{Name: "affinity", Value: "route-two"}})
+	after, _ := rt.CredentialScopeForMetadata(target, []string{"affinity"})
+	allAfter, _ := rt.CredentialScope(target)
+	if before != after || allBefore == allAfter {
+		t.Fatal("routing exclusion changed default semantics or failed to stabilize metadata")
+	}
+	if len(jar.Cookies(target)) != 2 {
+		t.Fatal("metadata fingerprint removed transport cookies")
+	}
+	jar.SetCookies(target, []*http.Cookie{{Name: "session", Value: "user-two"}})
+	rotated, _ := rt.CredentialScopeForMetadata(target, []string{"affinity"})
+	if rotated == after {
+		t.Fatal("authentication cookie change was ignored")
+	}
+}
