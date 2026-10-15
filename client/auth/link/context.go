@@ -29,6 +29,12 @@ func MCPAuthToken(ctx context.Context, useIDToken bool) string {
 // never falls back to an access token; user-info ACL facts require the former.
 func IDToken(ctx context.Context) string { return iauth.IDToken(ctx) }
 
+// WithTokens stores only the token bundle. It preserves independent ingress
+// bearer/ID-token values; InjectTokens is the explicit ingress convenience API.
+func WithTokens(ctx context.Context, tokens *scyauth.Token) context.Context {
+	return iauth.WithTokens(ctx, tokens)
+}
+
 // InjectTokens stores OAuth tokens in context so that MCPAuthToken and
 // downstream MCP clients can forward the logged-in user's token.
 // External auth middleware (outside this module) should call this after
