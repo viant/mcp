@@ -592,6 +592,19 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 		return nil, jsonrpc.NewInternalError(err.Error(), nil)
 	}
 
+	// July decoding requires cache fields, but older peers never supplied
+	// those hints. Preserve that absence for catalog owners: synthesized
+	// private+zero must not become an explicit no-cache instruction. A real
+	// zero TTL (including one sent without cacheScope) remains authoritative.
+	if tools, ok := any(&result).(*schema.ListToolsResult); ok {
+		var hints struct {
+			CacheScope string `json:"cacheScope"`
+			TTL        *int   `json:"ttlMs"`
+		}
+		if json.Unmarshal(response.Result, &hints) == nil && hints.CacheScope == "" && hints.TTL == nil {
+			tools.CacheScope = ""
+		}
+	}
 	return &result, nil
 }
 
