@@ -84,8 +84,12 @@ func TestHTTP_ListTools_AllowsMissingParams(t *testing.T) {
 	body, _ := io.ReadAll(toolsResp.Body)
 
 	var response struct {
-		Result *schema.ListToolsResult `json:"result"`
-		Error  *jsonrpc.Error          `json:"error"`
+		// This session negotiated the legacy protocol, whose tools/list result
+		// has no required July cache fields.
+		Result *struct {
+			Tools []schema.Tool `json:"tools"`
+		} `json:"result"`
+		Error *jsonrpc.Error `json:"error"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v body=%s", err, string(body))

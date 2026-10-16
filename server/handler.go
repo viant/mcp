@@ -189,9 +189,26 @@ func (h *Handler) setResponse(protocolVersion string, response *jsonrpc.Response
 	if rpcError != nil {
 		response.Error = rpcError
 	}
+	// Legacy producers do not have cache metadata. Do not turn an absent
+	// tools/list hint into an explicit private zero-TTL policy on the wire.
+	// July responses still require their complete cache metadata contract.
+	legacyToolHints := false
+	if tools, ok := result.(*schema.ListToolsResult); ok && tools != nil && protocolVersion != schema.LatestProtocolVersion && tools.CacheScope == "" && tools.TtlMs == 0 {
+		detached := *tools
+		result = &detached
+		legacyToolHints = true
+	}
 	h.finalizeResult(protocolVersion, result)
 	var err error
 	response.Result, err = json.Marshal(result)
+	if err == nil && legacyToolHints {
+		var wire map[string]json.RawMessage
+		if err = json.Unmarshal(response.Result, &wire); err == nil {
+			delete(wire, "cacheScope")
+			delete(wire, "ttlMs")
+			response.Result, err = json.Marshal(wire)
+		}
+	}
 	if err != nil {
 		response.Error = jsonrpc.NewInternalError(err.Error(), []byte{})
 	}
