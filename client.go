@@ -420,7 +420,7 @@ func NewClientWithContext(ctx context.Context, handler pclient.Handler, options 
 		return nil, legacyErr
 	}
 	if !isProtocolVersionNegotiationError(legacyErr) {
-		return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %v; %s initialize: %w",
+		return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %w; %s initialize: %w",
 			schema.LatestProtocolVersion, latestErr, schema.LegacyProtocolVersion, legacyErr)
 	}
 
@@ -432,7 +432,7 @@ func NewClientWithContext(ctx context.Context, handler pclient.Handler, options 
 	if compatibilityClient != nil {
 		compatibilityClient.Close()
 	}
-	return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %v; %s initialize: %v; %s initialize: %w",
+	return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %w; %s initialize: %w; %s initialize: %w",
 		schema.LatestProtocolVersion, latestErr,
 		schema.LegacyProtocolVersion, legacyErr,
 		compatibilityProtocolVersionJune2025, compatibilityErr)

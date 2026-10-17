@@ -107,7 +107,7 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 		if authcfg.IsLinkRequired(err) {
 			return nil, err
 		}
-		return nil, jsonrpc.NewInternalError(err.Error(), req.Params)
+		return nil, jsonrpc.NewInternalError(err.Error(), req.Params).WithCause(err)
 	}
 	if response.Error != nil {
 		return nil, response.Error
@@ -190,7 +190,7 @@ func (c *Client) discover(ctx context.Context, options ...RequestOption) (*schem
 		if authcfg.IsLinkRequired(err) {
 			return nil, err
 		}
-		return nil, jsonrpc.NewInternalError(err.Error(), nil)
+		return nil, jsonrpc.NewInternalError(err.Error(), nil).WithCause(err)
 	}
 	if response.Error != nil {
 		return nil, response.Error
@@ -548,14 +548,14 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 				if authcfg.IsLinkRequired(recErr) {
 					return nil, recErr
 				}
-				return nil, jsonrpc.NewInternalError(recErr.Error(), nil)
+				return nil, jsonrpc.NewInternalError(recErr.Error(), nil).WithCause(recErr)
 			}
 		}
 		if err != nil {
 			if authcfg.IsLinkRequired(err) {
 				return nil, err
 			}
-			return nil, jsonrpc.NewInternalError(err.Error(), nil)
+			return nil, jsonrpc.NewInternalError(err.Error(), nil).WithCause(err)
 		}
 	}
 	// Optionally intercept 401 Unauthorized and retry with token
@@ -577,7 +577,7 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 				if authcfg.IsLinkRequired(err) {
 					return nil, err
 				}
-				return nil, jsonrpc.NewInternalError(err.Error(), nil)
+				return nil, jsonrpc.NewInternalError(err.Error(), nil).WithCause(err)
 			}
 		}
 	}
