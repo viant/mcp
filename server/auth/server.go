@@ -280,6 +280,10 @@ func (s *Service) ProtectedResourcesHandler(w http.ResponseWriter, request *http
 }
 
 func New(config *Config) (*Service, error) {
+	grantStore := config.BFFGrantStore
+	if grantStore == nil {
+		grantStore = defaultBFFGrantStore
+	}
 	return &Service{Config: config,
 		codeVerifiers: syncmap.NewMap[string, *Verifier](),
 		resourceToken: syncmap.NewMap[string, *oauth2.Token](),
@@ -300,7 +304,7 @@ func New(config *Config) (*Service, error) {
 			}
 			return ""
 		},
-		bffGrantStore:     defaultBFFGrantStore,
+		bffGrantStore:     grantStore,
 		bffAuthCookieName: defaultBFFAuthCookieName,
 	}, nil
 }

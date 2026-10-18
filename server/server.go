@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/viant/jsonrpc/transport"
+	streamauth "github.com/viant/jsonrpc/transport/server/auth"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp-protocol/syncmap"
@@ -29,6 +30,7 @@ type Server struct {
 	corsConfig                *Cors
 	authorizer                func(next http.Handler) http.Handler
 	jRPCAuthorizer            auth.JRPCAuthorizer
+	bffAuthStore              streamauth.Store
 	requestContext            func(context.Context) (context.Context, error)
 	onSessionClose            func(transport.Notifier)
 	stdioServer
