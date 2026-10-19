@@ -1,6 +1,7 @@
 package auth
 
 import (
+	streamauth "github.com/viant/jsonrpc/transport/server/auth"
 	"github.com/viant/mcp-protocol/authorization"
 	"golang.org/x/oauth2"
 )
@@ -13,7 +14,10 @@ type Config struct {
 	AuthorizeResource            ResourceAuthorizer
 	Policy                       *authorization.Policy
 	BackendForFrontend           *BackendForFrontend
-	MediationMode                string //HTTP, JSONRPC
+	// BFFGrantStore is shared with this listener's HTTP transport. When nil,
+	// legacy process defaults remain in effect.
+	BFFGrantStore streamauth.Store
+	MediationMode string //HTTP, JSONRPC
 
 }
 

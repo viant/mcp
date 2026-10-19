@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/viant/jsonrpc/transport"
+	streamauth "github.com/viant/jsonrpc/transport/server/auth"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp-protocol/server"
 	"github.com/viant/mcp/server/auth"
@@ -21,6 +22,15 @@ func WithRequestContext(prepare func(context.Context) (context.Context, error)) 
 
 // Option is a function that configures the handler.
 type Option func(s *Server) error
+
+// WithBFFAuthStore binds an auth grant store to this HTTP listener. The same
+// store must be passed to the listener's auth.Service via auth.Config.
+func WithBFFAuthStore(store streamauth.Store) Option {
+	return func(s *Server) error {
+		s.bffAuthStore = store
+		return nil
+	}
+}
 
 // WithOnSessionClose observes final transport-session removal. A temporary
 // streaming disconnect remains resumable and does not close the session.

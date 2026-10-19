@@ -55,9 +55,12 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 	}
 
 	// Default in-memory BFF AuthStore (dev-friendly). Replace via server options for production.
-	memAuth := streamauth.NewMemoryStore(30*time.Minute, 24*time.Hour, 2*time.Minute)
-	mcpauth.SetDefaultBFFAuthStore(memAuth)
-	mcpauth.SetDefaultBFFAuthCookieName("BFF-Auth-Session")
+	memAuth := s.bffAuthStore
+	if memAuth == nil {
+		memAuth = streamauth.NewMemoryStore(30*time.Minute, 24*time.Hour, 2*time.Minute)
+		mcpauth.SetDefaultBFFAuthStore(memAuth)
+		mcpauth.SetDefaultBFFAuthCookieName("BFF-Auth-Session")
+	}
 	if serverDebug() {
 		fmt.Printf("[mcp/server] HTTP addr=%s sseURI=%s msgURI=%s streamURI=%s\n", addr, s.sseURI, s.sseMessageURI, s.streamableURI)
 	}
