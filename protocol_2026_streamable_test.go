@@ -292,9 +292,15 @@ func TestUnversionedClientDoesNotTryJuneForNonProtocolFailure(t *testing.T) {
 		t.Fatal("expected automatic protocol attempts to fail")
 	}
 	if !strings.Contains(err.Error(), schema.LatestProtocolVersion) ||
-		!strings.Contains(err.Error(), schema.LegacyProtocolVersion) ||
-		!strings.Contains(err.Error(), "server exploded") {
+		!strings.Contains(err.Error(), schema.LegacyProtocolVersion) {
 		t.Fatalf("expected aggregated latest and legacy errors, got %v", err)
+	}
+	var status *jsonrpc.HTTPStatusError
+	if !errors.As(err, &status) || status.StatusCode != http.StatusInternalServerError || jsonrpc.IsUnauthorized(err) {
+		t.Fatalf("expected typed HTTP 500 without an authentication challenge, got %v", err)
+	}
+	if strings.Contains(err.Error(), "server exploded") {
+		t.Fatal("upstream HTTP body must not leak into the transport error")
 	}
 	assertProtocolRequestOrder(t, requests.snapshot(), []protocolRequestObservation{
 		{method: schema.MethodServerDiscover, header: schema.LatestProtocolVersion, bodyVersion: schema.LatestProtocolVersion},

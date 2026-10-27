@@ -45,14 +45,14 @@ const (
 
 var (
 	errInvalidMCPProtocolVersion = errors.New(invalidMCPProtocolVersionMarker)
-	errProtocolRejectionScan     = errors.New("timed out scanning SSE protocol rejection response")
+	errProtocolRejectionScan     = errors.New("timed out scanning MCP protocol rejection response")
 )
 
 type contextAuthHeaderTransport struct {
 	base http.RoundTripper
 }
 
-type sseProtocolRejectionTransport struct {
+type protocolRejectionTransport struct {
 	base http.RoundTripper
 }
 
@@ -94,18 +94,21 @@ func (t *contextAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Respons
 	return base.RoundTrip(clone)
 }
 
-func (t *sseProtocolRejectionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+// Preserve only the known version-negotiation signal before JSON-RPC turns
+// a rejected HTTP response into a body-free status error. Ordinary 400s and
+// authentication failures retain their original transport behavior.
+func (t *protocolRejectionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	base := t.base
 	if base == nil {
 		base = http.DefaultTransport
 	}
 	response, err := base.RoundTrip(req)
 	if err != nil || response == nil || response.Body == nil ||
-		req.Method != http.MethodGet || response.StatusCode != http.StatusBadRequest {
+		(req.Method != http.MethodGet && req.Method != http.MethodPost) || response.StatusCode != http.StatusBadRequest {
 		return response, err
 	}
 
-	bodyPrefix, readErr := readSSEProtocolRejectionPrefix(req.Context(), response.Body)
+	bodyPrefix, readErr := readProtocolRejectionPrefix(req.Context(), response.Body)
 	if readErr != nil {
 		_ = response.Body.Close()
 		return nil, readErr
@@ -121,7 +124,7 @@ func (t *sseProtocolRejectionTransport) RoundTrip(req *http.Request) (*http.Resp
 	return nil, errInvalidMCPProtocolVersion
 }
 
-func readSSEProtocolRejectionPrefix(ctx context.Context, body io.ReadCloser) ([]byte, error) {
+func readProtocolRejectionPrefix(ctx context.Context, body io.ReadCloser) ([]byte, error) {
 	stopContextClose := context.AfterFunc(ctx, func() {
 		_ = body.Close()
 	})
@@ -585,8 +588,8 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 	}
 	if httpClient != nil {
 		httpClient = wrapContextAuthHTTPClient(httpClient)
-		if c.Transport.Type == "sse" {
-			httpClient = wrapSSEProtocolRejectionHTTPClient(httpClient)
+		if c.Transport.Type == "sse" || c.Transport.Type == "streamable" {
+			httpClient = wrapProtocolRejectionHTTPClient(httpClient)
 		}
 	}
 
@@ -685,12 +688,12 @@ func wrapContextAuthHTTPClient(client *http.Client) *http.Client {
 	return &clone
 }
 
-func wrapSSEProtocolRejectionHTTPClient(client *http.Client) *http.Client {
+func wrapProtocolRejectionHTTPClient(client *http.Client) *http.Client {
 	if client == nil {
 		return nil
 	}
 	clone := *client
-	clone.Transport = &sseProtocolRejectionTransport{base: client.Transport}
+	clone.Transport = &protocolRejectionTransport{base: client.Transport}
 	return &clone
 }
 

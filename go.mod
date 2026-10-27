@@ -9,7 +9,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/viant/afs v1.26.2
 	github.com/viant/gosh v0.2.1
-	github.com/viant/jsonrpc v0.25.1-0.20261017043720-5809a36c92af
+	github.com/viant/jsonrpc v0.25.1
 	github.com/viant/mcp-protocol v0.19.1-0.20261014173008-af92f34f304b
 	github.com/viant/scy v0.24.0
 	golang.org/x/oauth2 v0.30.0
