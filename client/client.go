@@ -1,9 +1,11 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/viant/mcp/internal/conv"
 	"strings"
 	"sync"
 	"time"
@@ -616,7 +618,7 @@ func (c *Client) withProtocolMeta(req *jsonrpc.Request) {
 	}
 	var params map[string]interface{}
 	if len(req.Params) > 0 && string(req.Params) != "null" {
-		_ = json.Unmarshal(req.Params, &params)
+		_ = conv.DecodeNumbers(req.Params, &params)
 	}
 	if params == nil {
 		params = map[string]interface{}{}
@@ -647,23 +649,24 @@ func (c *Client) withProtocolMeta(req *jsonrpc.Request) {
 
 // normalizeResultJSON implements the July rule that a missing resultType from
 // an older peer means "complete". Cache fields are supplied only for decoding
-// legacy results through the July-preferred root schema.
+// legacy results through the July-preferred root schema. Opaque nested values
+// remain raw JSON so normalization cannot round numbers or reinterpret data.
 func normalizeResultJSON(method string, raw json.RawMessage) json.RawMessage {
-	var result map[string]interface{}
+	var result map[string]json.RawMessage
 	if len(raw) == 0 || json.Unmarshal(raw, &result) != nil || result == nil {
 		return raw
 	}
-	if value, ok := result["resultType"]; !ok || value == "" {
-		result["resultType"] = "complete"
+	if value, ok := result["resultType"]; !ok || bytes.Equal(bytes.TrimSpace(value), []byte(`""`)) {
+		result["resultType"] = json.RawMessage(`"complete"`)
 	}
 	switch method {
 	case schema.MethodResourcesList, schema.MethodResourcesTemplatesList,
 		schema.MethodResourcesRead, schema.MethodPromptsList, schema.MethodToolsList:
-		if value, ok := result["cacheScope"]; !ok || value == "" {
-			result["cacheScope"] = "private"
+		if value, ok := result["cacheScope"]; !ok || bytes.Equal(bytes.TrimSpace(value), []byte(`""`)) {
+			result["cacheScope"] = json.RawMessage(`"private"`)
 		}
 		if _, ok := result["ttlMs"]; !ok {
-			result["ttlMs"] = 0
+			result["ttlMs"] = json.RawMessage(`0`)
 		}
 	}
 	normalized, err := json.Marshal(result)
@@ -680,7 +683,7 @@ func withAuthMeta(req *jsonrpc.Request, token string) *jsonrpc.Request {
 	}
 	var params map[string]interface{}
 	if len(req.Params) > 0 && string(req.Params) != "null" {
-		_ = json.Unmarshal(req.Params, &params)
+		_ = conv.DecodeNumbers(req.Params, &params)
 	}
 	if params == nil {
 		params = map[string]interface{}{}

@@ -380,3 +380,18 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 Author: Adrian Witas
 
 This project is maintained by [Viant](https://github.com/viant).
+
+### Exact tool-call JSON numbers
+
+Request metadata adapters preserve JSON numeric tokens in opaque tool arguments.
+Legacy result normalization edits only top-level protocol defaults and preserves
+nested result and metadata JSON as raw fields. Large integers, uint64 values,
+negative numbers, fractions, and exponents therefore retain their original
+precision and remain JSON numbers. Nulls, arrays, objects, strings, and booleans
+retain their existing shapes.
+
+End-to-end normal client decoding also requires the companion mcp-protocol
+number-preserving tool-call decoder change. Numeric leaves in protocol-decoded
+interface values then use `json.Number`, including small integers; convert to the
+application's declared numeric type explicitly rather than asserting `float64`.
+JSON-RPC envelope IDs are not decoded or rewritten by these metadata adapters.

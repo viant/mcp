@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/viant/mcp/internal/conv"
 	"reflect"
 
 	"github.com/viant/jsonrpc"
@@ -20,7 +21,7 @@ func (h *Handler) prepareProtocolRequest(ctx context.Context, request *jsonrpc.R
 	}
 	var params map[string]interface{}
 	if len(request.Params) > 0 && string(request.Params) != "null" {
-		if err := json.Unmarshal(request.Params, &params); err != nil {
+		if err := conv.DecodeNumbers(request.Params, &params); err != nil {
 			return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
 		}
 	}
