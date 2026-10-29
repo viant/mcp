@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/viant/jsonrpc"
+	"github.com/viant/mcp-protocol/jsonvalue"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/internal/conv"
 )
@@ -40,6 +41,7 @@ func (h *Handler) CallTool(ctx context.Context, request *jsonrpc.Request) (*sche
 	if err := conv.DecodeNumbers(request.Params, &exact); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError("invalid tool arguments", nil)
 	}
+	jsonvalue.Normalize(exact.Arguments)
 	callToolRequest.Params.Arguments = exact.Arguments
 	id, _ := jsonrpc.AsRequestIntId(request.Id)
 	return h.handler.CallTool(ctx, &jsonrpc.TypedRequest[*schema.CallToolRequest]{Request: callToolRequest, Id: uint64(id)})

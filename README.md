@@ -383,15 +383,16 @@ This project is maintained by [Viant](https://github.com/viant).
 
 ### Exact tool-call JSON numbers
 
-Request metadata adapters preserve JSON numeric tokens in opaque tool arguments.
-Legacy result normalization edits only top-level protocol defaults and preserves
-nested result and metadata JSON as raw fields. Large integers, uint64 values,
-negative numbers, fractions, and exponents therefore retain their original
-precision and remain JSON numbers. Nulls, arrays, objects, strings, and booleans
-retain their existing shapes.
+Request metadata adapters preserve JSON numeric values in opaque tool arguments.
+Result normalization edits only its own fields and preserves nested JSON tokens.
+Generic argument and result leaves retain legacy `float64` values when their
+JSON encoding has the same exact decimal value and integral values remain within the
+safe range ±(2^53−1), including small integers,
+ordinary fractions and exponent notation. Other numeric leaves use
+`encoding/json.Number`; callers must handle that type for large integers,
+precise decimals, overflow and underflow. Numbers remain numeric JSON values.
+Schema enum decoding and typed request IDs retain their existing contracts.
 
-End-to-end normal client decoding also requires the companion mcp-protocol
-number-preserving tool-call decoder change. Numeric leaves in protocol-decoded
-interface values then use `json.Number`, including small integers; convert to the
-application's declared numeric type explicitly rather than asserting `float64`.
-JSON-RPC envelope IDs are not decoded or rewritten by these metadata adapters.
+The exact-number guarantee covers tool-call payloads, not arbitrary numeric
+`_meta` extensions: the existing `RequestMetaObject` extension marshal/unmarshal
+uses ordinary `json.Unmarshal` and may round such extension values.

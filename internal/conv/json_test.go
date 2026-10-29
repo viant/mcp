@@ -23,3 +23,13 @@ func TestDecodeNumbersPreservesTokensAndRequiresOneValue(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeNumbersLegacyExtraction(t *testing.T) {
+	var object map[string]interface{}
+	if err := DecodeNumbers([]byte(`{"small":7,"fraction":0.1,"exponent":1e3,"null":null,"precise":0.12345678901234567890123456789}`), &object); err != nil {
+		t.Fatal(err)
+	}
+	if object["small"].(float64) != 7 || object["fraction"].(float64) != 0.1 || object["exponent"].(float64) != 1000 || object["null"] != nil || object["precise"] != json.Number("0.12345678901234567890123456789") {
+		t.Fatalf("changed values: %#v", object)
+	}
+}

@@ -24,7 +24,7 @@ func TestCallToolPreservesRawNumericArguments(t *testing.T) {
 	h := &Handler{handler: &numericToolHandler{call: func(r *schema.CallToolRequest) {
 		calls++
 		args := r.Params.Arguments
-		for name, want := range map[string]string{"large": "9007199254740993", "max": "9223372036854775807", "min": "-9223372036854775808", "fraction": "1.25", "exponent": "1e3"} {
+		for name, want := range map[string]string{"large": "9007199254740993", "max": "9223372036854775807", "min": "-9223372036854775808"} {
 			value, ok := args[name].(json.Number)
 			if !ok || string(value) != want {
 				t.Fatalf("%s rounded/type changed: %T %v", name, args[name], args[name])
@@ -34,7 +34,7 @@ func TestCallToolPreservesRawNumericArguments(t *testing.T) {
 		if nested != json.Number("9007199254740995") {
 			t.Fatalf("nested rounded: %T %v", nested, nested)
 		}
-		if args["zero"] != json.Number("0") || args["flag"] != false || args["null"] != nil || args["text"] != "1" {
+		if args["zero"] != float64(0) || args["fraction"] != float64(1.25) || args["exponent"] != float64(1000) || args["flag"] != false || args["null"] != nil || args["text"] != "1" {
 			t.Fatalf("scalar semantics changed: %+v", args)
 		}
 	}}}
