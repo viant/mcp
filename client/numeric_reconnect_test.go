@@ -36,7 +36,7 @@ func TestNumericArgumentsSurviveReconnectAndProtocolStartup(t *testing.T) {
 					require.Equal(t, float64(7), params.Arguments["small"])
 					require.Equal(t, float64(0.1), params.Arguments["fraction"])
 					require.Equal(t, float64(1000), params.Arguments["exponent"])
-					require.Equal(t, json.Number("9007199254740993"), params.Arguments["large"])
+					require.Equal(t, float64(9007199254740992), params.Arguments["large"])
 					result = map[string]interface{}{"content": []interface{}{}, "structuredContent": params.Arguments}
 				default:
 					t.Fatalf("unexpected method: %s", r.Method)
@@ -55,7 +55,7 @@ func TestNumericArgumentsSurviveReconnectAndProtocolStartup(t *testing.T) {
 			require.Equal(t, 1, calls)
 			values := result.StructuredContent.(map[string]interface{})
 			require.Equal(t, float64(7), values["small"])
-			require.Equal(t, json.Number("9007199254740993"), values["large"])
+			require.Equal(t, float64(9007199254740992), values["large"])
 		})
 	}
 }

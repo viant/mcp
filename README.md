@@ -381,18 +381,14 @@ Author: Adrian Witas
 
 This project is maintained by [Viant](https://github.com/viant).
 
-### Exact tool-call JSON numbers
+### Tool-call JSON numbers
 
-Request metadata adapters preserve JSON numeric values in opaque tool arguments.
-Result normalization edits only its own fields and preserves nested JSON tokens.
-Generic argument and result leaves retain legacy `float64` values when their
-JSON encoding has the same exact decimal value and integral values remain within the
-safe range ±(2^53−1), including small integers,
-ordinary fractions and exponent notation. Other numeric leaves use
-`encoding/json.Number`; callers must handle that type for large integers,
-precise decimals, overflow and underflow. Numbers remain numeric JSON values.
-Schema enum decoding and typed request IDs retain their existing contracts.
+Generic tool-call argument and result values use standard `encoding/json`
+decoding: numeric leaves are `float64`, including large integers and precise
+decimals. Large numbers may round, tiny exponents may underflow to zero, and
+float64 overflow is rejected. Trailing or malformed JSON is rejected.
 
-The exact-number guarantee covers tool-call payloads, not arbitrary numeric
-`_meta` extensions: the existing `RequestMetaObject` extension marshal/unmarshal
-uses ordinary `json.Unmarshal` and may round such extension values.
+Declared numeric fields and envelope IDs retain their existing typed decoding.
+Schema enums and schema vocabulary continue to preserve exact `json.Number`
+values; this exact schema handling does not extend to generic tool payloads.
+Applications requiring exact business identifiers should use string fields.

@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/viant/jsonrpc"
-	"github.com/viant/mcp-protocol/jsonvalue"
 	"github.com/viant/mcp-protocol/schema"
-	"github.com/viant/mcp/internal/conv"
 )
 
 // ListTools handles the tools/list method
@@ -31,18 +29,6 @@ func (h *Handler) CallTool(ctx context.Context, request *jsonrpc.Request) (*sche
 	if err := json.Unmarshal(request.Params, &callToolRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
-	// Protocol-generated custom unmarshallers may use json.Unmarshal internally,
-	// so an outer UseNumber decoder alone cannot preserve argument precision.
-	// Retain their validation, then decode arguments directly from the original
-	// wire bytes before any tool or schema validator observes rounded values.
-	var exact struct {
-		Arguments map[string]interface{} `json:"arguments"`
-	}
-	if err := conv.DecodeNumbers(request.Params, &exact); err != nil {
-		return nil, jsonrpc.NewInvalidParamsError("invalid tool arguments", nil)
-	}
-	jsonvalue.Normalize(exact.Arguments)
-	callToolRequest.Params.Arguments = exact.Arguments
 	id, _ := jsonrpc.AsRequestIntId(request.Id)
 	return h.handler.CallTool(ctx, &jsonrpc.TypedRequest[*schema.CallToolRequest]{Request: callToolRequest, Id: uint64(id)})
 }

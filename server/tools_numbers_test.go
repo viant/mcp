@@ -19,19 +19,18 @@ func (h *numericToolHandler) CallTool(_ context.Context, r *jsonrpc.TypedRequest
 	h.call(r.Request)
 	return &schema.CallToolResult{}, nil
 }
-func TestCallToolPreservesRawNumericArguments(t *testing.T) {
+func TestCallToolUsesLegacyNumericArguments(t *testing.T) {
 	calls := 0
 	h := &Handler{handler: &numericToolHandler{call: func(r *schema.CallToolRequest) {
 		calls++
 		args := r.Params.Arguments
-		for name, want := range map[string]string{"large": "9007199254740993", "max": "9223372036854775807", "min": "-9223372036854775808"} {
-			value, ok := args[name].(json.Number)
-			if !ok || string(value) != want {
-				t.Fatalf("%s rounded/type changed: %T %v", name, args[name], args[name])
+		for name, want := range map[string]float64{"large": 9007199254740992, "max": 9223372036854775808, "min": -9223372036854775808} {
+			if value, ok := args[name].(float64); !ok || value != want {
+				t.Fatalf("%s legacy number changed: %T %v", name, args[name], args[name])
 			}
 		}
 		nested := args["nested"].([]any)[0].(map[string]any)["value"]
-		if nested != json.Number("9007199254740995") {
+		if nested != float64(9007199254740996) {
 			t.Fatalf("nested rounded: %T %v", nested, nested)
 		}
 		if args["zero"] != float64(0) || args["fraction"] != float64(1.25) || args["exponent"] != float64(1000) || args["flag"] != false || args["null"] != nil || args["text"] != "1" {

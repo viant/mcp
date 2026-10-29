@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,14 +17,8 @@ import (
 )
 
 type numericCompatInput struct {
-	ID           int64       `json:"id"`
-	Max          uint64      `json:"max"`
-	Decimal      json.Number `json:"decimal"`
-	Exponent     json.Number `json:"exponent"`
-	Small        float64     `json:"small"`
-	Fraction     float64     `json:"fraction"`
-	SafeExponent float64     `json:"safeExponent"`
-	Null         *string     `json:"null"`
+	ID     int64                  `json:"id"`
+	Values map[string]interface{} `json:"values"`
 }
 
 func TestNumericCompatibilityActualTypedHTTPBothProtocols(t *testing.T) {
@@ -31,10 +26,12 @@ func TestNumericCompatibilityActualTypedHTTPBothProtocols(t *testing.T) {
 		t.Run(version, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
+			var calls atomic.Int64
 			newHandler := serverproto.WithDefaultHandler(ctx, func(handler *serverproto.DefaultHandler) error {
 				return serverproto.RegisterTool[*numericCompatInput, *numericCompatInput](handler.Registry, "numeric", "numeric", func(_ context.Context, input *numericCompatInput) (*schema.CallToolResult, *jsonrpc.Error) {
-					if input.Max != ^uint64(0) || input.Decimal != "0.12345678901234567890123456789" || input.Exponent != "1.234567890123456789e100" || input.Small != 7 || input.Fraction != 0.1 || input.SafeExponent != 1000 || input.Null != nil {
-						return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("typed input changed: %+v", input), nil)
+					calls.Add(1)
+					if input.ID < 1 || input.ID > 4 || input.Values["large"] != float64(9007199254740992) || input.Values["small"].(float64) != 7 || input.Values["fraction"].(float64) != 0.1 || input.Values["exponent"].(float64) != 1000 || input.Values["null"] != nil {
+						return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("legacy input changed: %+v", input), nil)
 					}
 					return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{}, ResultType: schema.ResultTypeComplete, StructuredContent: input}, nil
 				})
@@ -55,36 +52,22 @@ func TestNumericCompatibilityActualTypedHTTPBothProtocols(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer native.Close()
-			failures := make(chan error, 5)
+			failures := make(chan error, 4)
 			var group sync.WaitGroup
-			for _, id := range []string{"9007199254740993", "9007199254740995", "1000000000000000100", "9223372036854775807", "-9223372036854775808"} {
+			for _, id := range []int64{1, 2, 3, 4} {
 				group.Add(1)
 				go func() {
 					defer group.Done()
-					args := map[string]interface{}{"id": json.Number(id), "max": json.Number("18446744073709551615"), "decimal": json.Number("0.12345678901234567890123456789"), "exponent": json.Number("1.234567890123456789e100"), "small": 7, "fraction": 0.1, "safeExponent": json.Number("1e3"), "null": nil, "unknown": json.Number("9007199254740997")}
+					args := map[string]interface{}{"id": id, "values": map[string]interface{}{"large": json.Number("9007199254740993"), "maxUint64": json.Number("18446744073709551615"), "precise": json.Number("0.12345678901234567890123456789"), "small": 7, "fraction": 0.1, "exponent": json.Number("1e3"), "null": nil}, "unknown": "ignored"}
 					result, err := native.CallTool(ctx, &schema.CallToolRequestParams{Name: "numeric", Arguments: args})
 					if err != nil {
 						failures <- err
 						return
 					}
-					values := result.StructuredContent.(map[string]interface{})
-					if values["id"] != json.Number(id) || values["max"] != json.Number("18446744073709551615") || values["decimal"] != json.Number("0.12345678901234567890123456789") || values["exponent"] != json.Number("1.234567890123456789e100") || values["small"].(float64) != 7 || values["fraction"].(float64) != 0.1 || values["safeExponent"].(float64) != 1000 || values["null"] != nil {
-						failures <- fmt.Errorf("response/correlation changed for %s: %#v", id, values)
-						return
-					}
-					encoded, err := json.Marshal(result)
-					if err != nil {
-						failures <- err
-						return
-					}
-					var raw struct {
-						Structured struct {
-							ID  json.Number `json:"id"`
-							Max json.Number `json:"max"`
-						} `json:"structuredContent"`
-					}
-					if err = json.Unmarshal(encoded, &raw); err != nil || raw.Structured.ID.String() != id || raw.Structured.Max != "18446744073709551615" {
-						failures <- fmt.Errorf("wire changed: %s %v", encoded, err)
+					object := result.StructuredContent.(map[string]interface{})
+					values := object["values"].(map[string]interface{})
+					if object["id"].(float64) != float64(id) || values["large"].(float64) != 9007199254740992 || values["maxUint64"].(float64) != float64(18446744073709551615.0) || values["precise"].(float64) != 0.12345678901234568 || values["small"].(float64) != 7 || values["fraction"].(float64) != 0.1 || values["exponent"].(float64) != 1000 || values["null"] != nil {
+						failures <- fmt.Errorf("response/correlation changed for %d: %#v", id, object)
 					}
 				}()
 			}
@@ -92,6 +75,13 @@ func TestNumericCompatibilityActualTypedHTTPBothProtocols(t *testing.T) {
 			close(failures)
 			for err := range failures {
 				t.Error(err)
+			}
+			beforeOverflow := calls.Load()
+			if _, err := native.CallTool(ctx, &schema.CallToolRequestParams{Name: "numeric", Arguments: map[string]interface{}{"id": 1, "values": map[string]interface{}{"large": json.Number("1e400")}}}); err == nil {
+				t.Fatal("overflow accepted")
+			}
+			if calls.Load() != beforeOverflow {
+				t.Fatal("overflow reached tool handler")
 			}
 			canceled, stop := context.WithCancel(ctx)
 			stop()

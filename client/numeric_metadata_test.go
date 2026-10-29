@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestCallToolMetadataPreservesNumericArguments(t *testing.T) {
+func TestCallToolMetadataUsesLegacyNumericArguments(t *testing.T) {
 	for _, version := range []string{schema.LegacyProtocolVersion, schema.LatestProtocolVersion} {
 		for _, auth := range []string{"", "synthetic-token"} {
 			t.Run(version+auth, func(t *testing.T) {
@@ -21,8 +21,8 @@ func TestCallToolMetadataPreservesNumericArguments(t *testing.T) {
 						Arguments map[string]interface{} `json:"arguments"`
 					}
 					require.NoError(t, conv.DecodeNumbers(req.Params, &wire))
-					require.Equal(t, json.Number("9007199254740993"), wire.Arguments["id"])
-					require.Equal(t, json.Number("9007199254740995"), wire.Arguments["nested"].([]interface{})[0].(map[string]interface{})["id"])
+					require.Equal(t, float64(9007199254740992), wire.Arguments["id"])
+					require.Equal(t, float64(9007199254740996), wire.Arguments["nested"].([]interface{})[0].(map[string]interface{})["id"])
 					require.Equal(t, false, wire.Arguments["flag"])
 					require.Nil(t, wire.Arguments["null"])
 					return &jsonrpc.Response{Jsonrpc: jsonrpc.Version, Result: json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`)}, nil
@@ -34,5 +34,15 @@ func TestCallToolMetadataPreservesNumericArguments(t *testing.T) {
 				require.Equal(t, 1, calls)
 			})
 		}
+	}
+}
+
+func TestNumericMetadataAdaptersDoNotRewriteDecodeErrors(t *testing.T) {
+	for _, raw := range []string{`{"name":"numeric","arguments":{"n":1e400}}`, `{"name":"numeric"} null`, `{"name":`} {
+		req := &jsonrpc.Request{Method: schema.MethodToolsCall, Params: json.RawMessage(raw)}
+		c := New("numeric", "1", nil, WithProtocolVersion(schema.LatestProtocolVersion))
+		c.withProtocolMeta(req)
+		require.Equal(t, raw, string(req.Params))
+		require.Equal(t, raw, string(withAuthMeta(req, "token").Params))
 	}
 }

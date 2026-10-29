@@ -618,7 +618,9 @@ func (c *Client) withProtocolMeta(req *jsonrpc.Request) {
 	}
 	var params map[string]interface{}
 	if len(req.Params) > 0 && string(req.Params) != "null" {
-		_ = conv.DecodeNumbers(req.Params, &params)
+		if err := conv.DecodeNumbers(req.Params, &params); err != nil {
+			return
+		}
 	}
 	if params == nil {
 		params = map[string]interface{}{}
@@ -683,7 +685,9 @@ func withAuthMeta(req *jsonrpc.Request, token string) *jsonrpc.Request {
 	}
 	var params map[string]interface{}
 	if len(req.Params) > 0 && string(req.Params) != "null" {
-		_ = conv.DecodeNumbers(req.Params, &params)
+		if err := conv.DecodeNumbers(req.Params, &params); err != nil {
+			return req
+		}
 	}
 	if params == nil {
 		params = map[string]interface{}{}
