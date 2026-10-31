@@ -10,6 +10,30 @@ import (
 	"github.com/viant/mcp-protocol/schema"
 )
 
+func TestProtocolVersionMiddlewareRequiresRoutingHeadersOnlyForModernRequests(t *testing.T) {
+	for _, version := range []string{"2025-06-18", "2025-11-25", "2026-07-28"} {
+		t.Run(version, func(t *testing.T) {
+			called := false
+			handler := protocolVersionMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			body := `{"jsonrpc":"2.0","id":7,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"` + version + `","io.modelcontextprotocol/clientCapabilities":{}}}}`
+			request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+			request.Header.Set(schema.HeaderProtocolVersion, version)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			want := http.StatusNoContent
+			if version == "2026-07-28" {
+				want = http.StatusBadRequest
+			}
+			if response.Code != want || called != (want == http.StatusNoContent) {
+				t.Fatalf("version %s without routing headers: status=%d called=%v want=%d", version, response.Code, called, want)
+			}
+		})
+	}
+}
+
 func TestNegotiatedProtocolVersion(t *testing.T) {
 	testCases := []struct {
 		name      string
