@@ -36,6 +36,7 @@ type Service struct {
 	// handlers) to allow setting an auth cookie when authorization has been established.
 	bffGrantStore     streamauth.Store
 	bffAuthCookieName string
+	bffGrantOnce      sync.Once
 }
 
 func (s *Service) RegisterHandlers(mux *http.ServeMux) {
@@ -130,10 +131,6 @@ func (s *Service) resolveAuthorizationRule(jRequest *jsonrpc.Request) (*authoriz
 func (s *Service) handleAuthorization(w http.ResponseWriter, r *http.Request, next http.Handler, resourceURI string, rule *authorization.Authorization) {
 	err := s.ensureResourceToken(r, rule)
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
-	cookieName := s.bffAuthCookieName
-	if cookieName == "" {
-		cookieName = defaultBFFAuthCookieName
-	}
 	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 		token := &authorization.Token{Token: authHeader}
 		rWithToken := r.WithContext(context.WithValue(r.Context(), authorization.TokenKey, token))
@@ -186,31 +183,23 @@ func (s *Service) handleAuthorization(w http.ResponseWriter, r *http.Request, ne
 // is established and a shared grant store is available. The cookie contains an
 // opaque grant id; tokens are never stored in cookies.
 func (s *Service) ensureBFFAuthCookie(w http.ResponseWriter, r *http.Request) {
-	if s.bffGrantStore == nil {
-		if defaultBFFGrantStore == nil {
-			defaultBFFGrantStore = streamauth.NewMemoryStore(30*time.Minute, 24*time.Hour, 2*time.Minute)
-		}
-		s.bffGrantStore = defaultBFFGrantStore
-	}
+	store := s.bffStore(r.Context())
 	if r.Method != http.MethodPost {
 		return
 	}
-	name := s.bffAuthCookieName
+	name := s.bffCookieName(r.Context())
 	if s.Config != nil && s.Config.BackendForFrontend != nil && strings.TrimSpace(s.Config.BackendForFrontend.AuthorizationExchangeHeader) != "" {
 		// Name remains default unless overridden globally; header presence only indicates BFF mode
 	}
-	if name == "" {
-		name = defaultBFFAuthCookieName
-	}
 	if ck, err := r.Cookie(name); err == nil && ck.Value != "" {
 		// touch existing grant and refresh cookie
-		_ = s.bffGrantStore.Touch(r.Context(), ck.Value, time.Now())
+		_ = store.Touch(r.Context(), ck.Value, time.Now())
 		http.SetCookie(w, &http.Cookie{Name: name, Value: ck.Value, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		return
 	}
 	// mint new grant and set cookie
 	g := streamauth.NewGrant("")
-	_ = s.bffGrantStore.Put(r.Context(), g)
+	_ = store.Put(r.Context(), g)
 	http.SetCookie(w, &http.Cookie{Name: name, Value: g.ID, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
 }
 
@@ -230,10 +219,7 @@ func (s *Service) getResourceKey(r *http.Request, rule *authorization.Authorizat
 	// Prefer a stable BFF auth cookie id when present so tokens survive
 	// across transport session reconnects. Fall back to current session id.
 	key := s.SessionIdProvider(r)
-	name := s.bffAuthCookieName
-	if name == "" {
-		name = defaultBFFAuthCookieName
-	}
+	name := s.bffCookieName(r.Context())
 	if ck, err := r.Cookie(name); err == nil && ck != nil && ck.Value != "" {
 		key = ck.Value
 	}
@@ -280,9 +266,10 @@ func (s *Service) ProtectedResourcesHandler(w http.ResponseWriter, request *http
 }
 
 func New(config *Config) (*Service, error) {
+	defaultStore, cookieName := currentBFFDefaults()
 	grantStore := config.BFFGrantStore
 	if grantStore == nil {
-		grantStore = defaultBFFGrantStore
+		grantStore = defaultStore
 	}
 	return &Service{Config: config,
 		codeVerifiers: syncmap.NewMap[string, *Verifier](),
@@ -305,6 +292,29 @@ func New(config *Config) (*Service, error) {
 			return ""
 		},
 		bffGrantStore:     grantStore,
-		bffAuthCookieName: defaultBFFAuthCookieName,
+		bffAuthCookieName: cookieName,
 	}, nil
+}
+
+func (s *Service) bffStore(ctx context.Context) streamauth.Store {
+	if binding, ok := ctx.Value(bffTransportKey{}).(bffTransport); ok && binding.store != nil {
+		return binding.store
+	}
+	s.bffGrantOnce.Do(func() {
+		if s.bffGrantStore == nil {
+			s.bffGrantStore = ensureDefaultBFFStore()
+		}
+	})
+	return s.bffGrantStore
+}
+
+func (s *Service) bffCookieName(ctx context.Context) string {
+	if binding, ok := ctx.Value(bffTransportKey{}).(bffTransport); ok && binding.cookieName != "" {
+		return binding.cookieName
+	}
+	if s.bffAuthCookieName != "" {
+		return s.bffAuthCookieName
+	}
+	_, name := currentBFFDefaults()
+	return name
 }

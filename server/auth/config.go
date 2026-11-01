@@ -14,8 +14,9 @@ type Config struct {
 	AuthorizeResource            ResourceAuthorizer
 	Policy                       *authorization.Policy
 	BackendForFrontend           *BackendForFrontend
-	// BFFGrantStore is shared with this listener's HTTP transport. When nil,
-	// legacy process defaults remain in effect.
+	// BFFGrantStore supplies a store outside a listener-bound HTTP request.
+	// The HTTP transport's binding is authoritative when present; otherwise
+	// this explicit store, then legacy process defaults, remain in effect.
 	BFFGrantStore streamauth.Store
 	MediationMode string //HTTP, JSONRPC
 

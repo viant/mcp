@@ -23,8 +23,8 @@ func WithRequestContext(prepare func(context.Context) (context.Context, error)) 
 // Option is a function that configures the handler.
 type Option func(s *Server) error
 
-// WithBFFAuthStore binds an auth grant store to this HTTP listener. The same
-// store must be passed to the listener's auth.Service via auth.Config.
+// WithBFFAuthStore binds an auth grant store to this HTTP listener. Its request
+// context also binds the same store to the listener's auth.Service.
 func WithBFFAuthStore(store streamauth.Store) Option {
 	return func(s *Server) error {
 		s.bffAuthStore = store

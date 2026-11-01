@@ -140,8 +140,11 @@ func (s *Server) HTTP(_ context.Context, addr string) *http.Server {
 		})
 	}
 	server := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr: addr,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := mcpauth.WithBFFTransport(r.Context(), memAuth, "BFF-Auth-Session")
+			mux.ServeHTTP(w, r.WithContext(ctx))
+		}),
 	}
 	return server
 }

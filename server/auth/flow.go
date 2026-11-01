@@ -14,10 +14,7 @@ func (s *Service) ensureResourceToken(r *http.Request, rule *authorization.Autho
 		return nil
 	}
 	// Build keys for cache lookup
-	ckName := defaultBFFAuthCookieName
-	if s.bffAuthCookieName != "" {
-		ckName = s.bffAuthCookieName
-	}
+	ckName := s.bffCookieName(r.Context())
 	ckVal := ""
 	if ck, cerr := r.Cookie(ckName); cerr == nil && ck != nil {
 		ckVal = ck.Value
