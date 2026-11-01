@@ -229,6 +229,11 @@ func (h *Handler) finalizeResult(version string, result interface{}) {
 	case *schema.CallToolResult:
 		if value.Meta == nil {
 			value.Meta = meta
+		} else if meta != nil && value.Meta.IoModelcontextprotocolServerInfo == nil {
+			// Keep extension metadata and never mutate a shared caller object.
+			merged := *value.Meta
+			merged.IoModelcontextprotocolServerInfo = meta.IoModelcontextprotocolServerInfo
+			value.Meta = &merged
 		}
 		if value.ResultType == "" {
 			value.ResultType = completeResultType
