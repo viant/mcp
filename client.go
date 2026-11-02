@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/viant/jsonrpc"
@@ -54,6 +55,68 @@ type contextAuthHeaderTransport struct {
 
 type protocolRejectionTransport struct {
 	base http.RoundTripper
+}
+
+// The initialize body negotiates the version. HTTP headers become authoritative
+// only after that reply; even a session GET started by the underlying transport
+// waits for the selected version. Each reconnect owns a new negotiation state.
+type httpProtocolNegotiation struct {
+	base    http.RoundTripper
+	mu      sync.RWMutex
+	version string
+	ready   chan struct{}
+	once    sync.Once
+}
+
+func (n *httpProtocolNegotiation) selectVersion(version string) {
+	n.mu.Lock()
+	n.version = version
+	n.mu.Unlock()
+	n.once.Do(func() { close(n.ready) })
+}
+func (n *httpProtocolNegotiation) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Header = req.Header.Clone()
+	if clone.Header.Get(schema.HeaderMethod) == schema.MethodInitialize {
+		clone.Header.Del(schema.HeaderProtocolVersion)
+	} else {
+		select {
+		case <-n.ready:
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		}
+		n.mu.RLock()
+		version := n.version
+		n.mu.RUnlock()
+		if version == "" {
+			return nil, errors.New("MCP protocol negotiation did not complete")
+		}
+		clone.Header.Set(schema.HeaderProtocolVersion, version)
+	}
+	return n.base.RoundTrip(clone)
+}
+
+type negotiatedProtocolTransport struct {
+	transport.Transport
+	negotiation *httpProtocolNegotiation
+}
+
+func (t *negotiatedProtocolTransport) NegotiateProtocolVersion(version string) error {
+	if version != compatibilityProtocolVersionJune2025 && version != schema.LegacyProtocolVersion {
+		return fmt.Errorf("server selected unsupported initialization protocol %q", version)
+	}
+	t.negotiation.selectVersion(version)
+	return nil
+}
+func (t *negotiatedProtocolTransport) Close() error {
+	t.negotiation.once.Do(func() { close(t.negotiation.ready) })
+	if closer, ok := t.Transport.(interface{ Close() error }); ok {
+		return closer.Close()
+	}
+	if closer, ok := t.Transport.(interface{ Close() }); ok {
+		closer.Close()
+	}
+	return nil
 }
 
 type prefixedReadCloser struct {
@@ -208,8 +271,9 @@ type ClientOptions struct {
 
 	// cachedAuthRT and cachedHTTPClient ensure authentication transport and token store
 	// are reused across reconnects to avoid losing tokens.
-	cachedAuthRT     *authtransport.RoundTripper
-	cachedHTTPClient *http.Client
+	cachedAuthRT      *authtransport.RoundTripper
+	cachedHTTPClient  *http.Client
+	negotiateProtocol bool
 
 	// CookieJar, if set, is attached to the underlying HTTP client so that
 	// servers using cookies (e.g., BFF flows) can persist session cookies
@@ -382,63 +446,68 @@ func NewClient(handler pclient.Handler, options *ClientOptions) (*client.Client,
 	return NewClientWithContext(context.Background(), handler, options)
 }
 
-// NewClientWithContext creates an MCP client and runs discovery (or the legacy
-// initialize handshake) with the supplied context so per-request auth tokens
+// NewClientWithContext creates an MCP client and negotiates its lifecycle
+// with the supplied context so per-request auth tokens
 // and other caller state are available during negotiation.
 func NewClientWithContext(ctx context.Context, handler pclient.Handler, options *ClientOptions) (*client.Client, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	autoProtocol := strings.TrimSpace(options.ProtocolVersion) == ""
+	automatic := strings.TrimSpace(options.ProtocolVersion) == ""
 	options.Init()
+	options.negotiateProtocol = automatic && options.Transport.Type == "streamable"
+	if automatic {
+		// Offer the interoperable legacy baseline once. Some older peers echo any
+		// body version; offering a newer generation would falsely imply support.
+		options.ProtocolVersion = compatibilityProtocolVersionJune2025
+	}
 	initCtx := ctx
-	cancelProbe := func() {}
-	if autoProtocol && options.ProtocolVersion == schema.LatestProtocolVersion {
-		initCtx, cancelProbe = context.WithTimeout(ctx, 5*time.Second)
+	cancel := func() {}
+	if automatic {
+		initCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
 	}
 	cli, err := newClientWithProtocol(ctx, initCtx, handler, options)
-	cancelProbe()
+	cancel()
 	if err == nil {
+		if automatic {
+			if selected, e := cli.NegotiatedServer(); e == nil {
+				options.ProtocolVersion = selected.ProtocolVersion
+			}
+		}
 		return cli, nil
 	}
 	if cli != nil {
 		cli.Close()
 	}
-	if authcfg.IsLinkRequired(err) {
+	if !automatic || !isLifecycleNegotiationError(err) {
 		return nil, err
 	}
-	if !autoProtocol || options.ProtocolVersion != schema.LatestProtocolVersion {
-		return nil, err
+	// A typed lifecycle incompatibility can select stateless discovery. HTTP
+	// authentication/authorization failures are never version-detection signals.
+	options.ProtocolVersion = schema.LatestProtocolVersion
+	options.negotiateProtocol = false
+	modernCtx, cancelModern := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelModern()
+	modern, modernErr := newClientWithProtocol(ctx, modernCtx, handler, options)
+	if modernErr == nil {
+		return modern, nil
 	}
-	latestErr := err
-	options.ProtocolVersion = schema.LegacyProtocolVersion
-	legacyClient, legacyErr := newClientWithProtocol(ctx, ctx, handler, options)
-	if legacyErr == nil {
-		return legacyClient, nil
+	if modern != nil {
+		modern.Close()
 	}
-	if legacyClient != nil {
-		legacyClient.Close()
-	}
-	if authcfg.IsLinkRequired(legacyErr) {
-		return nil, legacyErr
-	}
-	if !isProtocolVersionNegotiationError(legacyErr) {
-		return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %w; %s initialize: %w",
-			schema.LatestProtocolVersion, latestErr, schema.LegacyProtocolVersion, legacyErr)
-	}
+	return nil, fmt.Errorf("automatic MCP negotiation failed: initialize: %w; discovery: %w", err, modernErr)
+}
 
-	options.ProtocolVersion = compatibilityProtocolVersionJune2025
-	compatibilityClient, compatibilityErr := newClientWithProtocol(ctx, ctx, handler, options)
-	if compatibilityErr == nil {
-		return compatibilityClient, nil
+func isLifecycleNegotiationError(err error) bool {
+	if authcfg.IsLinkRequired(err) || jsonrpc.IsUnauthorized(err) {
+		return false
 	}
-	if compatibilityClient != nil {
-		compatibilityClient.Close()
+	var status *jsonrpc.HTTPStatusError
+	if errors.As(err, &status) && (status.StatusCode == http.StatusUnauthorized || status.StatusCode == http.StatusForbidden) {
+		return false
 	}
-	return nil, fmt.Errorf("automatic MCP protocol attempts failed: %s discovery: %w; %s initialize: %w; %s initialize: %w",
-		schema.LatestProtocolVersion, latestErr,
-		schema.LegacyProtocolVersion, legacyErr,
-		compatibilityProtocolVersionJune2025, compatibilityErr)
+	var rpc *jsonrpc.Error
+	return (errors.As(err, &rpc) && rpc.Code == jsonrpc.MethodNotFound) || isProtocolVersionNegotiationError(err)
 }
 
 func isProtocolVersionNegotiationError(err error) bool {
@@ -593,6 +662,13 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 		}
 	}
 
+	var negotiation *httpProtocolNegotiation
+	if c.negotiateProtocol && c.Transport.Type == "streamable" {
+		negotiation = &httpProtocolNegotiation{ready: make(chan struct{}), base: httpClient.Transport}
+		copyClient := *httpClient
+		copyClient.Transport = negotiation
+		httpClient = &copyClient
+	}
 	clientHandler := client.NewHandler(handler)
 	switch c.Transport.Type {
 
@@ -659,6 +735,9 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 		ret, err := streamable.New(ctx, httpOptions.URL, opts...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create streamable transport: %w", err)
+		}
+		if negotiation != nil {
+			return &negotiatedProtocolTransport{Transport: ret, negotiation: negotiation}, authRT, nil
 		}
 		return ret, authRT, nil
 	default:

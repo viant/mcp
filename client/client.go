@@ -119,6 +119,24 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to unmarshal InitializeResult: %v", err), nil)
 	}
+	// HTTP construction supplies a negotiation owner so the server-selected
+	// version is validated and installed before initialized or subsequent GETs.
+	if negotiator, ok := currentTransport.(interface{ NegotiateProtocolVersion(string) error }); ok {
+		c.stateMu.Lock()
+		changed := c.negotiated != nil && c.protocolVersion != result.ProtocolVersion
+		c.stateMu.Unlock()
+		if changed {
+			return nil, fmt.Errorf("server changed protocol during reconnect")
+		}
+		if err := negotiator.NegotiateProtocolVersion(result.ProtocolVersion); err != nil {
+			return nil, err
+		}
+		c.stateMu.Lock()
+		if c.protocolVersion != result.ProtocolVersion {
+			c.protocolVersion = result.ProtocolVersion
+		}
+		c.stateMu.Unlock()
+	}
 	err = currentTransport.Notify(ctx, &jsonrpc.Notification{Method: schema.MethodNotificationInitialized})
 	if err != nil {
 		return nil, jsonrpc.NewInternalError(fmt.Sprintf("failed to notify initialized: %v", err), nil)

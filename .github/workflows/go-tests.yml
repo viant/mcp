@@ -1,0 +1,24 @@
+name: MCP tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Unit tests
+        run: go test -timeout 10m ./...
+      - name: Protocol negotiation and reconnect race tests
+        run: go test -race -timeout 10m -run 'Test(AutomaticHTTP|Unversioned|ExplicitProtocol|July|ProtocolVersion|.*Reconnect)' . ./client

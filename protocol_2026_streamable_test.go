@@ -103,137 +103,7 @@ func assertProtocolRequestOrder(t *testing.T, actual, expected []protocolRequest
 	}
 }
 
-func TestUnversionedClientFallsBackToJuneProtocolOnVersionNegotiationFailure(t *testing.T) {
-	testCases := []struct {
-		name                 string
-		writeLegacyRejection func(http.ResponseWriter, json.RawMessage)
-	}{
-		{
-			name: "old server header error",
-			writeLegacyRejection: func(w http.ResponseWriter, _ json.RawMessage) {
-				http.Error(w, "invalid MCP-Protocol-Version", http.StatusBadRequest)
-			},
-		},
-		{
-			name: "JSON-RPC unsupported version",
-			writeLegacyRejection: func(w http.ResponseWriter, id json.RawMessage) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"jsonrpc": "2.0",
-					"id":      id,
-					"error": map[string]interface{}{
-						"code":    schema.ErrorCodeUnsupportedProtocolVersion,
-						"message": "unsupported protocol version",
-					},
-				})
-			},
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			var requests protocolRequestLog
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost {
-					w.WriteHeader(http.StatusMethodNotAllowed)
-					return
-				}
-				defer r.Body.Close()
-				accept := r.Header.Get("Accept")
-				if !strings.Contains(accept, "application/json") || !strings.Contains(accept, "text/event-stream") {
-					t.Errorf("streamable Accept header = %q; want JSON and event stream", accept)
-				}
-				var request struct {
-					ID     json.RawMessage `json:"id"`
-					Method string          `json:"method"`
-					Params json.RawMessage `json:"params"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-				requests.append(protocolRequestObservation{
-					method:      request.Method,
-					header:      r.Header.Get(schema.HeaderProtocolVersion),
-					bodyVersion: requestBodyProtocolVersion(request.Method, request.Params),
-				})
-
-				switch request.Method {
-				case schema.MethodServerDiscover:
-					w.Header().Set("Content-Type", "application/json")
-					_ = json.NewEncoder(w).Encode(map[string]interface{}{
-						"jsonrpc": "2.0",
-						"id":      request.ID,
-						"error": map[string]interface{}{
-							"code":    jsonrpc.MethodNotFound,
-							"message": "method not found",
-						},
-					})
-				case schema.MethodInitialize:
-					switch r.Header.Get(schema.HeaderProtocolVersion) {
-					case schema.LegacyProtocolVersion:
-						testCase.writeLegacyRejection(w, request.ID)
-					case compatibilityProtocolVersionJune2025:
-						w.Header().Set("Content-Type", "application/json")
-						w.Header().Set("Mcp-Session-Id", "june-session")
-						_ = json.NewEncoder(w).Encode(map[string]interface{}{
-							"jsonrpc": "2.0",
-							"id":      request.ID,
-							"result": map[string]interface{}{
-								"protocolVersion": compatibilityProtocolVersionJune2025,
-								"capabilities":    map[string]interface{}{},
-								"serverInfo": map[string]interface{}{
-									"name":    "june-server",
-									"version": "1.0",
-								},
-							},
-						})
-					default:
-						t.Errorf("unexpected initialize protocol %q", r.Header.Get(schema.HeaderProtocolVersion))
-						http.Error(w, "unexpected protocol", http.StatusBadRequest)
-					}
-				case schema.MethodNotificationInitialized:
-					w.WriteHeader(http.StatusAccepted)
-				default:
-					t.Errorf("unexpected method %q", request.Method)
-					http.Error(w, "unexpected method", http.StatusBadRequest)
-				}
-			}))
-			defer server.Close()
-
-			options := &ClientOptions{
-				Name:    "auto-client",
-				Version: "1.0",
-				Transport: ClientTransport{
-					Type: "streamable",
-					ClientTransportHTTP: ClientTransportHTTP{
-						URL: server.URL,
-					},
-				},
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			client, err := NewClientWithContext(ctx, &julyProtocolClientHandler{}, options)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer client.Close()
-
-			if options.ProtocolVersion != compatibilityProtocolVersionJune2025 {
-				t.Fatalf("expected fallback to %s, got %s", compatibilityProtocolVersionJune2025, options.ProtocolVersion)
-			}
-			assertProtocolRequestOrder(t, requests.snapshot(), []protocolRequestObservation{
-				{method: schema.MethodServerDiscover, header: schema.LatestProtocolVersion, bodyVersion: schema.LatestProtocolVersion},
-				{method: schema.MethodInitialize, header: schema.LegacyProtocolVersion, bodyVersion: schema.LegacyProtocolVersion},
-				{method: schema.MethodInitialize, header: compatibilityProtocolVersionJune2025, bodyVersion: compatibilityProtocolVersionJune2025},
-				{method: schema.MethodNotificationInitialized, header: compatibilityProtocolVersionJune2025},
-			})
-		})
-	}
-}
-
-func TestUnversionedClientDoesNotTryJuneForNonProtocolFailure(t *testing.T) {
+func TestUnversionedClientDoesNotDiscoverForNonProtocolFailure(t *testing.T) {
 	var requests protocolRequestLog
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -291,10 +161,6 @@ func TestUnversionedClientDoesNotTryJuneForNonProtocolFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected automatic protocol attempts to fail")
 	}
-	if !strings.Contains(err.Error(), schema.LatestProtocolVersion) ||
-		!strings.Contains(err.Error(), schema.LegacyProtocolVersion) {
-		t.Fatalf("expected aggregated latest and legacy errors, got %v", err)
-	}
 	var status *jsonrpc.HTTPStatusError
 	if !errors.As(err, &status) || status.StatusCode != http.StatusInternalServerError || jsonrpc.IsUnauthorized(err) {
 		t.Fatalf("expected typed HTTP 500 without an authentication challenge, got %v", err)
@@ -303,8 +169,7 @@ func TestUnversionedClientDoesNotTryJuneForNonProtocolFailure(t *testing.T) {
 		t.Fatal("upstream HTTP body must not leak into the transport error")
 	}
 	assertProtocolRequestOrder(t, requests.snapshot(), []protocolRequestObservation{
-		{method: schema.MethodServerDiscover, header: schema.LatestProtocolVersion, bodyVersion: schema.LatestProtocolVersion},
-		{method: schema.MethodInitialize, header: schema.LegacyProtocolVersion, bodyVersion: schema.LegacyProtocolVersion},
+		{method: schema.MethodInitialize, header: "", bodyVersion: compatibilityProtocolVersionJune2025},
 	})
 }
 
@@ -464,8 +329,8 @@ func TestUnversionedClientFallsBackToLegacyProtocol(t *testing.T) {
 	if options.ProtocolVersion != schema.LegacyProtocolVersion {
 		t.Fatalf("expected fallback to %s, got %s", schema.LegacyProtocolVersion, options.ProtocolVersion)
 	}
-	if discoverCalls != 1 || initializeCalls != 1 {
-		t.Fatalf("expected one discovery and one legacy initialize, got discovery=%d initialize=%d", discoverCalls, initializeCalls)
+	if discoverCalls != 0 || initializeCalls != 1 {
+		t.Fatalf("expected headerless initialize without discovery, got discovery=%d initialize=%d", discoverCalls, initializeCalls)
 	}
 }
 
