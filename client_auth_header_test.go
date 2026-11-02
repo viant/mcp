@@ -2,17 +2,6 @@ package mcp
 
 import (
 	"context"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"sync"
-	"time"
-
-	"github.com/viant/mcp-protocol/schema"
-)
-
-imp	ort (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
