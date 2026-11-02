@@ -108,6 +108,14 @@ func (t *negotiatedProtocolTransport) NegotiateProtocolVersion(version string) e
 	t.negotiation.selectVersion(version)
 	return nil
 }
+
+// SessionID preserves the underlying transport's established session boundary.
+func (t *negotiatedProtocolTransport) SessionID() string {
+	if session, ok := t.Transport.(interface{ SessionID() string }); ok {
+		return session.SessionID()
+	}
+	return ""
+}
 func (t *negotiatedProtocolTransport) Close() error {
 	t.negotiation.once.Do(func() { close(t.negotiation.ready) })
 	if closer, ok := t.Transport.(interface{ Close() error }); ok {

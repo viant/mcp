@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/viant/mcp/internal/conv"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -295,8 +297,21 @@ func (c *Client) Unsubscribe(ctx context.Context, params *schema.UnsubscribeRequ
 // long-lived background goroutines (e.g. streamable SSE readers) do not leak
 // across reconnects.
 func (c *Client) reconnectAndInitialize(ctx context.Context) error {
+	return c.reconnectFailedTransport(ctx, nil)
+}
+
+func (c *Client) reconnectFailedTransport(ctx context.Context, failed transport.Transport) error {
 	c.reconnectMu.Lock()
 	defer c.reconnectMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.stateMu.RLock()
+	alreadyRecovered := failed != nil && c.transport != failed && c.initialized
+	c.stateMu.RUnlock()
+	if alreadyRecovered {
+		return nil
+	}
 	if c.reconnect == nil {
 		return fmt.Errorf("reconnect is not configured")
 	}
@@ -493,6 +508,18 @@ func WithAuthInterceptor(authorizer *auth.Authorizer) Option {
 	}
 }
 
+// HTTP 404 on an established Streamable HTTP session means the server
+// discarded that session before dispatch. It is distinct from an RPC/business
+// not-found response or an ambiguous connection failure.
+func expiredHTTPSession(active transport.Transport, err error) bool {
+	session, ok := active.(interface{ SessionID() string })
+	if !ok || session.SessionID() == "" {
+		return false
+	}
+	var status interface{ HTTPStatusCode() int }
+	return errors.As(err, &status) && status.HTTPStatusCode() == http.StatusNotFound
+}
+
 func send[P any, R any](ctx context.Context, client *Client, method string, parameters *P, options ...RequestOption) (*R, error) {
 	if !client.isInitialized() { //ensure initialized
 		if err := client.ensureInitialized(ctx); err != nil {
@@ -535,10 +562,12 @@ func send[P any, R any](ctx context.Context, client *Client, method string, para
 		if authcfg.IsLinkRequired(err) {
 			return nil, err
 		}
-		// Automatic session recovery – if the server has been restarted, the existing session can be lost.
-		// In that case the transport returns an HTTP 404 error containing "session '<id>' not found".
-		if !authcfg.NoRetry(ctx) && strings.Contains(err.Error(), "session") && strings.Contains(err.Error(), "not found") {
-			if recErr := client.reconnectAndInitialize(ctx); recErr == nil {
+		// Restore a server-discarded session once, retaining legacy session-error
+		// compatibility. NoRetry, cancellation and ambiguous failures never
+		// enter the typed HTTP recovery path.
+		legacySessionMissing := strings.Contains(err.Error(), "session") && strings.Contains(err.Error(), "not found")
+		if !authcfg.NoRetry(ctx) && ctx.Err() == nil && (expiredHTTPSession(activeTransport, err) || legacySessionMissing) {
+			if recErr := client.reconnectFailedTransport(ctx, activeTransport); recErr == nil {
 				// Construct fresh request to avoid duplicate id after successful reconnect
 				req, _ = jsonrpc.NewRequest(method, parameters)
 				client.withProtocolMeta(req)
