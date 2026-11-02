@@ -13,6 +13,12 @@ import (
 )
 
 func (r *RoundTripper) IdToken(ctx context.Context, token *oauth2.Token, resourceMetadata *meta.ProtectedResourceMetadata) (*oauth2.Token, error) {
+	if resourceMetadata == nil || len(resourceMetadata.AuthorizationServers) == 0 {
+		return nil, fmt.Errorf("protected resource metadata has no authorization servers")
+	}
+	if token == nil {
+		return nil, errors.New("identity token source is missing")
+	}
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	authServers := resourceMetadata.AuthorizationServers
 	issuer := authServers[rnd.Intn(len(authServers))]

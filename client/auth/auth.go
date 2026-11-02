@@ -7,6 +7,7 @@ import (
 	"github.com/viant/mcp-protocol/authorization"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/client/auth/transport"
+	"github.com/viant/mcp/internal/conv"
 	"golang.org/x/oauth2"
 	"strings"
 )
@@ -30,6 +31,11 @@ func (a *Authorizer) Intercept(ctx context.Context, request *jsonrpc.Request, re
 		if err := json.Unmarshal(data, &anAuthorization); err != nil {
 			return nil, err
 		}
+		// A plain Unauthorized error is not an OAuth authorization descriptor.
+		// Preserve it without starting a grant flow or dereferencing absent PRM.
+		if anAuthorization.ProtectedResourceMetadata == nil || len(anAuthorization.ProtectedResourceMetadata.AuthorizationServers) == 0 {
+			return nil, nil
+		}
 		token, err := a.Transport.ProtectedResourceToken(ctx, anAuthorization.ProtectedResourceMetadata, strings.Join(anAuthorization.RequiredScopes, " "))
 		if err != nil {
 			return nil, err
@@ -51,7 +57,7 @@ func (a *Authorizer) Intercept(ctx context.Context, request *jsonrpc.Request, re
 
 func injectToken(request *jsonrpc.Request, token *oauth2.Token) (*jsonrpc.Request, error) {
 	params := map[string]interface{}{}
-	err := json.Unmarshal([]byte(request.Params), &params)
+	err := conv.DecodeNumbers(request.Params, &params)
 	if err != nil {
 		return nil, err
 	}

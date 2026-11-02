@@ -211,6 +211,9 @@ func (r *RoundTripper) ProtectedResourceToken(ctx context.Context, resourceMetad
 	if r.credentialResolver != nil {
 		return nil, fmt.Errorf("interactive oauth flow is disabled: external credential resolver is installed")
 	}
+	if resourceMetadata == nil || len(resourceMetadata.AuthorizationServers) == 0 {
+		return nil, fmt.Errorf("protected resource metadata has no authorization servers")
+	}
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	authServers := resourceMetadata.AuthorizationServers
 	issuer := authServers[rnd.Intn(len(authServers))]
