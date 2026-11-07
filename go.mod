@@ -33,6 +33,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/tiendc/go-deepcopy v1.7.1
 	github.com/viant/parsly v0.3.3 // indirect
 	github.com/viant/tagly v0.4.2-0.20261028223500-81e046a19ef9 // indirect
 	github.com/viant/toolbox v0.36.0 // indirect
