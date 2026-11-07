@@ -22,8 +22,10 @@ type CatalogQuery struct {
 	NameTerms        []string `json:"nameTerms,omitempty"`
 	DescriptionTerms []string `json:"descriptionTerms,omitempty"`
 	Keywords         []string `json:"keywords,omitempty"`
-	Limit            int      `json:"limit,omitempty"`
-	Cursor           string   `json:"cursor,omitempty"`
+	// ExcludeKeywords rejects any literal name or description match; exclusion wins.
+	ExcludeKeywords []string `json:"excludeKeywords,omitempty"`
+	Limit           int      `json:"limit,omitempty"`
+	Cursor          string   `json:"cursor,omitempty"`
 }
 type CatalogPage[T any] struct {
 	Items      []T    `json:"items"`
@@ -128,6 +130,7 @@ func (c *Catalog[T]) Page(ctx context.Context, query CatalogQuery) (*CatalogPage
 	query.NameTerms = normalizeTerms(query.NameTerms)
 	query.DescriptionTerms = normalizeTerms(query.DescriptionTerms)
 	query.Keywords = normalizeTerms(query.Keywords)
+	query.ExcludeKeywords = normalizeTerms(query.ExcludeKeywords)
 	if query.Limit <= 0 {
 		query.Limit = 100
 	}
@@ -168,6 +171,9 @@ func (c *Catalog[T]) Page(ctx context.Context, query CatalogQuery) (*CatalogPage
 			continue
 		}
 		text := c.text[i]
+		if len(query.ExcludeKeywords) > 0 && (containsAny(text.name, query.ExcludeKeywords) || containsAny(text.description, query.ExcludeKeywords)) {
+			continue
+		}
 		if !containsAny(text.name, query.NameTerms) || !containsAny(text.description, query.DescriptionTerms) {
 			continue
 		}
