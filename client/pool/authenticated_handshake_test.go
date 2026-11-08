@@ -73,3 +73,85 @@ func TestAuthenticatedHandshakeIncludesUserTokenBeforeSuccessfulAnonymousRespons
 		require.Equal(t, "Bearer fixture-user-token", header, "authenticated handshake must not silently negotiate anonymous capabilities")
 	}
 }
+
+func TestPooledHandshakeFollowsSelectedUserCredential(t *testing.T) {
+	var mu sync.Mutex
+	var credentials []string
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			ID     json.RawMessage
+			Method string
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Method != schema.MethodServerDiscover {
+			http.Error(w, "expected server discovery", http.StatusBadRequest)
+			return
+		}
+		credential := r.Header.Get("Authorization")
+		mu.Lock()
+		credentials = append(credentials, credential)
+		mu.Unlock()
+		extensions := map[string]any{}
+		if credential == "Bearer fixture-first-token" {
+			extensions[schema.SkillsExtension] = map[string]any{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID,
+			"result": map[string]any{
+				"supportedVersions": []string{schema.LatestProtocolVersion},
+				"capabilities":      map[string]any{"extensions": extensions},
+				"cacheScope":        "private",
+				"ttlMs":             0,
+				"resultType":        "complete",
+			},
+		})
+	}))
+	defer peer.Close()
+
+	var options cfg.MCPClient
+	require.NoError(t, json.Unmarshal([]byte(`{"name":"fixture","auth":{"backendForFrontend":true,"useIdToken":true}}`), &options))
+	options.Transport = mcp.ClientTransport{Type: "streamable", ClientTransportHTTP: mcp.ClientTransportHTTP{URL: peer.URL}}
+	options.ProtocolVersion = schema.LatestProtocolVersion
+	rt, err := authtransport.New(authtransport.WithTransport(http.DefaultTransport))
+	require.NoError(t, err)
+	selections := 0
+	mgr, err := New(&authTokenProviderConfigStub{cfg: &options}, WithAuthRoundTripper(rt), WithUserIDExtractor(authctx.EffectiveUserID), WithTokenContextPreparer(func(ctx context.Context, _ string, _ bool) context.Context {
+		selections++
+		if authctx.IDToken(ctx) == "fixture-unprepared-token" {
+			return authctx.WithIDToken(ctx, "fixture-first-token")
+		}
+		return ctx
+	}))
+	require.NoError(t, err)
+	defer mgr.CloseConversation("")
+	ctx, cancel := context.WithTimeout(authctx.InjectUser(context.Background(), "fixture-user"), 5*time.Second)
+	defer cancel()
+
+	acquire := func(ctx context.Context, wantSkills bool) *managedClient {
+		t.Helper()
+		client, err := mgr.Get(ctx, "", "fixture")
+		require.NoError(t, err)
+		managed := client.(*managedClient)
+		negotiated, err := managed.NegotiatedServer()
+		require.NoError(t, err)
+		_, skills := negotiated.Capabilities.Extensions[schema.SkillsExtension]
+		require.Equal(t, wantSkills, skills)
+		return managed
+	}
+	public := acquire(ctx, false)
+	require.Same(t, public, acquire(ctx, false))
+	first := authctx.WithIDToken(ctx, "fixture-unprepared-token")
+	authenticated := acquire(first, true)
+	require.NotSame(t, public, authenticated)
+	require.Same(t, authenticated, acquire(first, true))
+	require.Same(t, authenticated, acquire(authctx.WithIDToken(ctx, "fixture-first-token"), true))
+	rotated := authctx.WithIDToken(ctx, "fixture-rotated-token")
+	updated := acquire(rotated, false)
+	require.NotSame(t, authenticated, updated)
+	require.Same(t, updated, acquire(rotated, false))
+	require.NotSame(t, updated, acquire(ctx, false))
+	require.Equal(t, 8, selections, "each acquisition selects its credential once")
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"", "Bearer fixture-first-token", "Bearer fixture-rotated-token", ""}, credentials)
+}

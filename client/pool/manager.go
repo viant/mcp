@@ -181,26 +181,35 @@ type Manager struct {
 }
 
 type entry struct {
-	capacityHeld      bool
-	resourceReceiver  [32]byte
-	aliases           map[string]bool
-	configFingerprint [32]byte
-	client            mcpclient.Interface
-	managed           *managedClient
-	usedAt            time.Time
-	active            int
-	evicted           bool
-	closed            bool
-	epoch             uint64
+	capacityHeld          bool
+	resourceReceiver      [32]byte
+	aliases               map[string]bool
+	configFingerprint     [32]byte
+	credentialFingerprint [32]byte
+	client                mcpclient.Interface
+	managed               *managedClient
+	usedAt                time.Time
+	active                int
+	evicted               bool
+	closed                bool
+	epoch                 uint64
 }
 
 type createCall struct {
-	configFingerprint [32]byte
-	conflictLogged    bool
-	ready             chan struct{}
-	entry             *entry
-	err               error
-	epoch             uint64
+	configFingerprint     [32]byte
+	credentialFingerprint [32]byte
+	conflictLogged        bool
+	ready                 chan struct{}
+	entry                 *entry
+	err                   error
+	epoch                 uint64
+}
+
+func poolChangeFields(previous, current [32]byte) string {
+	if previous == current {
+		return "reason=credential_changed"
+	}
+	return fmt.Sprintf("reason=configuration_changed previous=%x current=%x", previous[:6], current[:6])
 }
 
 // New creates a Manager with the given Provider and options.
@@ -513,6 +522,14 @@ func (m *Manager) Get(ctx context.Context, convID, serverName string) (result mc
 	if err != nil {
 		return nil, err
 	}
+	// The server can advertise a different protocol surface to an anonymous
+	// client. Reuse only a handshake made with the selected BFF credential.
+	handshakeCtx := ctx
+	var credentialFingerprint [32]byte
+	if m.newClientFn == nil && !m.IsLocalClient(serverName) && usesUserTransportAuth(configured) {
+		handshakeCtx = m.withAuthTokenContext(ctx, serverName, configured)
+		credentialFingerprint = handshakeCredentialFingerprint(handshakeCtx)
+	}
 	key := m.poolKey(ctx, convID)
 	receiver := m.resourceReceiver(ctx)
 	m.mu.Lock()
@@ -528,18 +545,18 @@ func (m *Manager) Get(ctx context.Context, convID, serverName string) (result mc
 		closeClientBestEffort(stale)
 		m.mu.Lock()
 	}
-	if e := m.pool[key][serverName]; e != nil && e.client != nil && e.configFingerprint != fingerprint {
+	if e := m.pool[key][serverName]; e != nil && e.client != nil && (e.configFingerprint != fingerprint || e.credentialFingerprint != credentialFingerprint) {
 		previousFingerprint := e.configFingerprint
 		stale := m.evictEntryLocked(key, serverName, e)
 		m.mu.Unlock()
-		log.Printf("[info][mcp-client-pool] configuration_replaced server=%q scope_type=%s previous=%x current=%x action=refresh", poolConfigLogName(serverName), poolScopeType(key, serverName), previousFingerprint[:6], fingerprint[:6])
+		log.Printf("[info][mcp-client-pool] configuration_replaced server=%q scope_type=%s %s action=refresh", poolConfigLogName(serverName), poolScopeType(key, serverName), poolChangeFields(previousFingerprint, fingerprint))
 		closeClientBestEffort(stale)
 		m.mu.Lock()
 	}
-	if e := m.pool[key][serverName]; e != nil && e.client != nil && e.configFingerprint != fingerprint {
+	if e := m.pool[key][serverName]; e != nil && e.client != nil && (e.configFingerprint != fingerprint || e.credentialFingerprint != credentialFingerprint) {
 		previousFingerprint := e.configFingerprint
 		m.mu.Unlock()
-		log.Printf("[warn][mcp-client-pool] configuration_conflict server=%q scope_type=%s previous=%x current=%x reason=concurrent_replacement action=reject", poolConfigLogName(serverName), poolScopeType(key, serverName), previousFingerprint[:6], fingerprint[:6])
+		log.Printf("[warn][mcp-client-pool] configuration_conflict server=%q scope_type=%s %s phase=concurrent_replacement action=reject", poolConfigLogName(serverName), poolScopeType(key, serverName), poolChangeFields(previousFingerprint, fingerprint))
 		return nil, errors.New("mcp manager: configuration changed during client replacement")
 	}
 	if e := m.pool[key][serverName]; e != nil && e.client != nil {
@@ -554,13 +571,13 @@ func (m *Manager) Get(ctx context.Context, convID, serverName string) (result mc
 		logPoolSummary(summary)
 		return client, nil
 	}
-	if call := m.inflight[key][serverName]; call != nil && call.configFingerprint != fingerprint {
+	if call := m.inflight[key][serverName]; call != nil && (call.configFingerprint != fingerprint || call.credentialFingerprint != credentialFingerprint) {
 		warn := !call.conflictLogged
 		call.conflictLogged = true
 		previousFingerprint := call.configFingerprint
 		m.mu.Unlock()
 		if warn {
-			log.Printf("[warn][mcp-client-pool] configuration_conflict server=%q scope_type=%s previous=%x current=%x reason=creation_inflight action=reject", poolConfigLogName(serverName), poolScopeType(key, serverName), previousFingerprint[:6], fingerprint[:6])
+			log.Printf("[warn][mcp-client-pool] configuration_conflict server=%q scope_type=%s %s phase=creation_inflight action=reject", poolConfigLogName(serverName), poolScopeType(key, serverName), poolChangeFields(previousFingerprint, fingerprint))
 		}
 		return nil, errors.New("mcp manager: configuration changed during client creation")
 	}
@@ -596,7 +613,7 @@ func (m *Manager) Get(ctx context.Context, convID, serverName string) (result mc
 	if m.inflight[key] == nil {
 		m.inflight[key] = map[string]*createCall{}
 	}
-	call := &createCall{ready: make(chan struct{}), epoch: m.epoch[key], configFingerprint: fingerprint}
+	call := &createCall{ready: make(chan struct{}), epoch: m.epoch[key], configFingerprint: fingerprint, credentialFingerprint: credentialFingerprint}
 	m.inflight[key][serverName] = call
 	m.mu.Unlock()
 	closeClientBestEffort(retired)
@@ -631,7 +648,7 @@ func (m *Manager) Get(ctx context.Context, convID, serverName string) (result mc
 		}
 	}
 	createTiming := observe.Start(ctx, "mcp.pool.create", observe.Labels{Provider: serverName})
-	client, err := newClient(ctx, convID, serverName)
+	client, err := newClient(handshakeCtx, convID, serverName)
 	createTiming.End(observe.OutcomeFor(err), observe.CacheMiss)
 	if reservedCapacity && err != nil && client != nil {
 		closeClientBestEffort(client)
@@ -705,7 +722,7 @@ func (m *Manager) Get(ctx context.Context, convID, serverName string) (result mc
 		close(call.ready)
 		return managed, nil
 	}
-	e := &entry{capacityHeld: reservedCapacity, resourceReceiver: receiver, client: client, usedAt: time.Now(), epoch: call.epoch, configFingerprint: fingerprint, aliases: map[string]bool{requestedName: true, serverName: true}}
+	e := &entry{capacityHeld: reservedCapacity, resourceReceiver: receiver, client: client, usedAt: time.Now(), epoch: call.epoch, configFingerprint: fingerprint, credentialFingerprint: credentialFingerprint, aliases: map[string]bool{requestedName: true, serverName: true}}
 	e.managed = &managedClient{mgr: m, key: key, serverName: serverName, entry: e}
 	m.pool[key][serverName] = e
 	capacityTransferred = true
@@ -727,7 +744,11 @@ func (m *Manager) newClient(ctx context.Context, convID, serverName string) (mcp
 	if opts == nil {
 		return nil, errors.New("mcp manager: nil client options")
 	}
-	return m.newClientWithOptions(ctx, convID, resolvedServiceName(opts, serverName), opts)
+	name := resolvedServiceName(opts, serverName)
+	if usesUserTransportAuth(opts) {
+		ctx = m.withAuthTokenContext(ctx, name, opts)
+	}
+	return m.newClientWithOptions(ctx, convID, name, opts)
 }
 func (m *Manager) newClientWithOptions(ctx context.Context, convID, serverName string, opts *mcpcfg.MCPClient) (mcpclient.Interface, error) {
 	if err := opts.ValidateExecutionLocation(); err != nil {
@@ -904,12 +925,6 @@ func (m *Manager) newClientWithOptions(ctx context.Context, convID, serverName s
 	// background context, allowing one unavailable MCP endpoint to stall every
 	// agent iteration for minutes.  Preserve cancellation through protocol
 	// negotiation so best-effort discovery can fail fast and use its cooldown.
-	// A BFF peer may accept anonymous initialization with fewer capabilities.
-	// Select the configured user credential before the first handshake, rather
-	// than relying on an authentication challenge that may never occur.
-	if !delegated && useTransportAuth {
-		ctx = m.WithAuthTokenContext(ctx, serverName)
-	}
 	cli, err := mcp.NewClientWithContext(ctx, h, opts.ClientOptions)
 	if err != nil {
 		// Surface delegated link-required failures as the stable Agently

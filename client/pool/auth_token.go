@@ -61,6 +61,14 @@ func (m *Manager) WithAuthTokenContext(ctx context.Context, serverName string) c
 	if ctx == nil || m == nil {
 		return ctx
 	}
+	if m.IsLocalClient(serverName) {
+		return m.withAuthTokenContext(ctx, serverName, nil)
+	}
+	options, _ := m.Options(ctx, serverName)
+	return m.withAuthTokenContext(ctx, serverName, options)
+}
+
+func (m *Manager) withAuthTokenContext(ctx context.Context, serverName string, options *mcpcfg.MCPClient) context.Context {
 	selectionContext := ctx
 	// In-process providers consume the original verified caller context. An
 	// OAuth refresh here would silently replace that captured authority.
@@ -68,12 +76,12 @@ func (m *Manager) WithAuthTokenContext(ctx context.Context, serverName string) c
 		reportAuthSelection(selectionContext, AuthSelection{ServerName: serverName, Type: "local_context", Present: "not_applicable"})
 		return ctx
 	}
-	if m.IsDelegatedAuth(ctx, serverName) {
+	if options != nil && options.IsDelegatedAuth() {
 		reportAuthSelection(selectionContext, AuthSelection{ServerName: serverName, Type: "delegated", Present: "unknown"})
 		return ctx
 	}
-	debugMCPAuthEnsure(serverName, ctx, "before_ensure", m.UseIDToken(ctx, serverName))
-	useIDToken := m.UseIDToken(ctx, serverName)
+	useIDToken := options != nil && options.ClientOptions != nil && options.Auth != nil && options.Auth.UseIdToken
+	debugMCPAuthEnsure(serverName, ctx, "before_ensure", useIDToken)
 	if m.prepareTokens != nil {
 		if prepared := m.prepareTokens(ctx, serverName, useIDToken); prepared != nil {
 			ctx = prepared
@@ -145,4 +153,12 @@ func usesUserTransportAuth(options *mcpcfg.MCPClient) bool {
 		return false
 	}
 	return options.Auth.BackendForFrontend == nil || *options.Auth.BackendForFrontend || len(options.Auth.OAuth2ConfigURL) > 0
+}
+
+func handshakeCredentialFingerprint(ctx context.Context) [32]byte {
+	token, _ := ctx.Value(authtransport.ContextAuthTokenKey).(string)
+	if token == "" {
+		return [32]byte{}
+	}
+	return sha256.Sum256([]byte(token))
 }
