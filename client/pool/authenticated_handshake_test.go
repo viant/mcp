@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/viant/mcp-protocol/logger"
 	"github.com/viant/mcp-protocol/schema"
 	protocol "github.com/viant/mcp-protocol/server"
+	mcpclient "github.com/viant/mcp/client"
 	authctx "github.com/viant/mcp/client/auth/link"
 	authtransport "github.com/viant/mcp/client/auth/transport"
 	cfg "github.com/viant/mcp/client/config"
@@ -77,6 +79,8 @@ func TestAuthenticatedHandshakeIncludesUserTokenBeforeSuccessfulAnonymousRespons
 func TestPooledHandshakeFollowsSelectedUserCredential(t *testing.T) {
 	var mu sync.Mutex
 	var credentials []string
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
 	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			ID     json.RawMessage
@@ -90,6 +94,10 @@ func TestPooledHandshakeFollowsSelectedUserCredential(t *testing.T) {
 		mu.Lock()
 		credentials = append(credentials, credential)
 		mu.Unlock()
+		if r.URL.Path == "/concurrent" {
+			started <- struct{}{}
+			<-release
+		}
 		extensions := map[string]any{}
 		if credential == "Bearer fixture-first-token" {
 			extensions[schema.SkillsExtension] = map[string]any{}
@@ -114,9 +122,9 @@ func TestPooledHandshakeFollowsSelectedUserCredential(t *testing.T) {
 	options.ProtocolVersion = schema.LatestProtocolVersion
 	rt, err := authtransport.New(authtransport.WithTransport(http.DefaultTransport))
 	require.NoError(t, err)
-	selections := 0
+	var selections atomic.Int32
 	mgr, err := New(&authTokenProviderConfigStub{cfg: &options}, WithAuthRoundTripper(rt), WithUserIDExtractor(authctx.EffectiveUserID), WithTokenContextPreparer(func(ctx context.Context, _ string, _ bool) context.Context {
-		selections++
+		selections.Add(1)
 		if authctx.IDToken(ctx) == "fixture-unprepared-token" {
 			return authctx.WithIDToken(ctx, "fixture-first-token")
 		}
@@ -149,9 +157,45 @@ func TestPooledHandshakeFollowsSelectedUserCredential(t *testing.T) {
 	updated := acquire(rotated, false)
 	require.NotSame(t, authenticated, updated)
 	require.Same(t, updated, acquire(rotated, false))
-	require.NotSame(t, updated, acquire(ctx, false))
-	require.Equal(t, 8, selections, "each acquisition selects its credential once")
+	require.Same(t, public, acquire(ctx, false))
+	require.EqualValues(t, 8, selections.Load(), "each acquisition selects its credential once")
 	mu.Lock()
-	defer mu.Unlock()
-	require.Equal(t, []string{"", "Bearer fixture-first-token", "Bearer fixture-rotated-token", ""}, credentials)
+	require.Equal(t, []string{"", "Bearer fixture-first-token", "Bearer fixture-rotated-token"}, credentials)
+	mu.Unlock()
+
+	options.Transport.URL += "/concurrent"
+	results := make(chan struct {
+		client mcpclient.Interface
+		err    error
+	}, 2)
+	for _, credential := range []string{"fixture-first-token", "fixture-rotated-token"} {
+		go func(credential string) {
+			client, err := mgr.Get(authctx.WithIDToken(ctx, credential), "concurrent", "fixture")
+			results <- struct {
+				client mcpclient.Interface
+				err    error
+			}{client, err}
+		}(credential)
+	}
+	bothStarted := true
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			bothStarted = false
+		}
+	}
+	close(release)
+	firstResult, secondResult := <-results, <-results
+	require.True(t, bothStarted, "different credentials must not contend for the same in-flight connection")
+	require.NoError(t, firstResult.err)
+	require.NoError(t, secondResult.err)
+	require.NotSame(t, firstResult.client, secondResult.client)
+	require.True(t, mgr.IsCurrentClient(first, "", "fixture", authenticated))
+	require.False(t, mgr.EvictCurrentClient(rotated, "", "fixture", authenticated), "another credential cannot retire a held session")
+	refreshed, err := mgr.Reconnect(first, "", "fixture")
+	require.NoError(t, err)
+	require.NotSame(t, authenticated, refreshed)
+	require.True(t, mgr.IsCurrentClient(rotated, "", "fixture", updated))
+	mgr.CloseConversation("concurrent")
 }

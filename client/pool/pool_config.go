@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 
+	mcpclient "github.com/viant/mcp/client"
 	cfg "github.com/viant/mcp/client/config"
 )
 
@@ -54,20 +56,26 @@ func effectiveConfigFingerprint(options *cfg.MCPClient) ([32]byte, error) {
 }
 
 func (m *Manager) evictConfiguredClient(ctx context.Context, conversation, name string) {
-	key := m.poolKey(ctx, conversation)
+	base := m.poolKey(ctx, conversation)
+	credentialPrefix := m.poolKey(ctx, "credential:")
+	var clients []mcpclient.Interface
 	m.mu.Lock()
-	resolved := name
-	if m.pool[key][resolved] == nil {
-		for service, entry := range m.pool[key] {
-			if entry.aliases[name] {
-				resolved = service
-				break
+	for key, entries := range m.pool {
+		if key != base && !(strings.HasPrefix(key, credentialPrefix) && strings.HasSuffix(key, ":"+conversation)) {
+			continue
+		}
+		for service, entry := range entries {
+			if service == name || entry.aliases[name] {
+				if client := m.evictEntryLocked(key, service, entry); client != nil {
+					clients = append(clients, client)
+				}
 			}
 		}
 	}
-	client := m.evictEntryLocked(key, resolved, m.pool[key][resolved])
 	m.mu.Unlock()
-	closeClientBestEffort(client)
+	for _, client := range clients {
+		closeClientBestEffort(client)
+	}
 }
 
 // BindDefinitionReader is startup-only and reserves already registered local

@@ -551,7 +551,8 @@ func (m *Manager) cachedToolCatalogState(ctx context.Context, conversation, serv
 	if err != nil {
 		return "", nil, err
 	}
-	key, service := m.poolKey(ctx, conversation), resolvedServiceName(configured, server)
+	_, key, _ := m.connectionContext(ctx, conversation, server, configured)
+	service := resolvedServiceName(configured, server)
 	m.mu.Lock()
 	held := m.pool[key][service]
 	var managed *managedClient

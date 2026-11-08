@@ -522,15 +522,8 @@ func (m *Manager) Get(ctx context.Context, convID, serverName string) (result mc
 	if err != nil {
 		return nil, err
 	}
-	// The server can advertise a different protocol surface to an anonymous
-	// client. Reuse only a handshake made with the selected BFF credential.
-	handshakeCtx := ctx
-	var credentialFingerprint [32]byte
-	if m.newClientFn == nil && !m.IsLocalClient(serverName) && usesUserTransportAuth(configured) {
-		handshakeCtx = m.withAuthTokenContext(ctx, serverName, configured)
-		credentialFingerprint = handshakeCredentialFingerprint(handshakeCtx)
-	}
-	key := m.poolKey(ctx, convID)
+	// Concurrent caller credentials retain independent negotiated sessions.
+	handshakeCtx, key, credentialFingerprint := m.connectionContext(ctx, convID, serverName, configured)
 	receiver := m.resourceReceiver(ctx)
 	m.mu.Lock()
 	// Intentionally avoid `defer m.mu.Unlock()` here.
@@ -1136,7 +1129,7 @@ func (m *Manager) poolSummaryLogLinesLocked(now time.Time) []string {
 	})
 	for _, client := range clients {
 		lines = append(lines, fmt.Sprintf("[info][mcp-client-pool] client server=%q pool_key=%q scope_type=%s active=%d used_at=%s",
-			client.server, client.poolKey, client.scopeType, client.active, client.usedAt.Format(time.RFC3339Nano)))
+			client.server, poolLogKey(client.poolKey), client.scopeType, client.active, client.usedAt.Format(time.RFC3339Nano)))
 	}
 	return lines
 }
@@ -1289,7 +1282,7 @@ func (m *Manager) Reconnect(ctx context.Context, convID, serverName string) (mcp
 	if m == nil {
 		return nil, errors.New("mcp manager: nil manager")
 	}
-	key := m.poolKey(ctx, convID)
+	key := m.currentConnectionKey(ctx, convID, serverName)
 	// Drop existing entry to force re-creation
 	var toClose mcpclient.Interface
 	m.mu.Lock()
@@ -1304,18 +1297,18 @@ func (m *Manager) Reconnect(ctx context.Context, convID, serverName string) (mcp
 	m.notifyCatalogChange(serverName)
 	scopeType := poolScopeType(key, serverName)
 	log.Printf("[warn][mcp-client-pool] reconnect server=%q scope_type=%s conv_id=%q pool_key=%q closing_existing=%v",
-		serverName, scopeType, convID, key, toClose != nil)
+		serverName, scopeType, convID, poolLogKey(key), toClose != nil)
 	logPoolSummary(summary)
 	closeClientBestEffort(toClose)
 	// Recreate
 	client, err := m.Get(ctx, convID, serverName)
 	if err != nil {
 		log.Printf("[warn][mcp-client-pool] reconnect failed server=%q scope_type=%s conv_id=%q pool_key=%q err=%v",
-			serverName, scopeType, convID, key, err)
+			serverName, scopeType, convID, poolLogKey(key), err)
 		return nil, err
 	}
 	log.Printf("[info][mcp-client-pool] reconnect succeeded server=%q scope_type=%s conv_id=%q pool_key=%q",
-		serverName, scopeType, convID, key)
+		serverName, scopeType, convID, poolLogKey(key))
 	return client, nil
 }
 

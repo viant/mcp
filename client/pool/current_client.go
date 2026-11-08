@@ -22,7 +22,7 @@ func (m *Manager) IsCurrentClient(ctx context.Context, conversation, name string
 	if !ok || held == nil || held.entry == nil || held.mgr != m {
 		return false
 	}
-	key := m.poolKey(ctx, conversation)
+	key := m.currentConnectionKey(ctx, conversation, name)
 	if held.key != key {
 		return false
 	}
@@ -49,7 +49,7 @@ func (m *Manager) EvictCurrentClient(ctx context.Context, conversation, name str
 	if !ok || held == nil || held.entry == nil || held.mgr != m {
 		return false
 	}
-	key := m.poolKey(ctx, conversation)
+	key := m.currentConnectionKey(ctx, conversation, name)
 	if held.key != key {
 		return false
 	}

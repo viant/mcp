@@ -162,3 +162,31 @@ func handshakeCredentialFingerprint(ctx context.Context) [32]byte {
 	}
 	return sha256.Sum256([]byte(token))
 }
+
+func (m *Manager) connectionContext(ctx context.Context, conversation, name string, options *mcpcfg.MCPClient) (context.Context, string, [32]byte) {
+	var credential [32]byte
+	if m.newClientFn == nil && !m.IsLocalClient(name) && usesUserTransportAuth(options) {
+		ctx = m.withAuthTokenContext(ctx, name, options)
+		credential = handshakeCredentialFingerprint(ctx)
+	}
+	if credential != ([32]byte{}) {
+		conversation = fmt.Sprintf("credential:%x:%s", credential, conversation)
+	}
+	return ctx, m.poolKey(ctx, conversation), credential
+}
+
+func (m *Manager) currentConnectionKey(ctx context.Context, conversation, name string) string {
+	options, _ := m.Options(ctx, name)
+	_, key, _ := m.connectionContext(ctx, conversation, name, options)
+	return key
+}
+
+func poolLogKey(key string) string {
+	if start := strings.Index(key, "credential:"); start >= 0 {
+		end := start + len("credential:") + 64
+		if len(key) > end && key[end] == ':' {
+			return key[:start] + "credential:[redacted]" + key[end:]
+		}
+	}
+	return key
+}
