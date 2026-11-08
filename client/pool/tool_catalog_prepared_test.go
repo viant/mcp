@@ -105,3 +105,49 @@ func TestHTTPPreparedCatalogSelectCopiesOnlyRequestedShape(t *testing.T) {
 	require.Empty(t, removed)
 	require.EqualValues(t, 1, f.lists.Load(), "selected reads must never fetch or refresh the source")
 }
+
+func TestNativeCatalogSelectionPreservesNilAndEmptyNames(t *testing.T) {
+	for _, public := range []bool{false, true} {
+		t.Run(map[bool]string{false: "private", true: "public"}[public], func(t *testing.T) {
+			fixture := newIdentityFixture(t, identityFixtureOptions{public: public, persistent: true, paginated: true})
+			ctx := identityUser("alice", "a")
+			client, err := fixture.manager.Get(ctx, "", "server")
+			require.NoError(t, err)
+			first, err := client.ListTools(ctx, nil)
+			require.NoError(t, err)
+			_, err = client.ListTools(ctx, first.NextCursor)
+			require.NoError(t, err)
+			identity, full, err := fixture.manager.ToolCatalogSnapshot(ctx, "", "server")
+			require.NoError(t, err)
+			require.Len(t, full, 2)
+			for _, metadata := range []bool{false, true} {
+				selectedIdentity, all, err := fixture.manager.ToolCatalogSelect(ctx, "", "server", nil, metadata)
+				require.NoError(t, err)
+				require.Equal(t, identity, selectedIdentity)
+				require.Len(t, all, len(full))
+				for i, tool := range all {
+					require.Equal(t, full[i].Name, tool.Name)
+					require.Equal(t, full[i].Meta, tool.Meta)
+					if metadata {
+						require.Empty(t, tool.InputSchema.Properties)
+						require.Nil(t, tool.OutputSchema)
+					} else {
+						require.Equal(t, full[i], tool)
+					}
+				}
+				emptyIdentity, none, err := fixture.manager.ToolCatalogSelect(ctx, "", "server", []string{}, metadata)
+				require.NoError(t, err)
+				require.Equal(t, identity, emptyIdentity)
+				require.Empty(t, none)
+			}
+			fixture.manager.mu.Lock()
+			fixture.manager.invalidateToolCatalogLocked("server")
+			fixture.manager.mu.Unlock()
+			missing, tools, err := fixture.manager.ToolCatalogSelect(ctx, "", "server", nil, true)
+			require.NoError(t, err)
+			require.Empty(t, missing)
+			require.Empty(t, tools)
+			require.EqualValues(t, 2, fixture.lists.Load(), "warm selections must not fetch the source")
+		})
+	}
+}

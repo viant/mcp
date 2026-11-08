@@ -644,9 +644,6 @@ func (c *managedClient) selectedToolCatalogState(ctx context.Context, includeToo
 		metadataOnly := false
 		if selection != nil {
 			names = selection.names
-			if names == nil {
-				names = []string{}
-			}
 			metadataOnly = selection.metadataOnly
 		}
 		selected, err := page.Select(names, metadataOnly)
