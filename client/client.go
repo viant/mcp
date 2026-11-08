@@ -44,6 +44,7 @@ type Client struct {
 	// background pinger
 	pingInterval time.Duration
 	pingStop     chan struct{}
+	pingCancel   context.CancelFunc
 	pingWG       sync.WaitGroup
 }
 
@@ -65,7 +66,7 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 		c.stateMu.Lock()
 		c.initialized = true
 		c.stateMu.Unlock()
-		c.startPinger()
+		c.startPinger(ctx, options...)
 		result := &schema.InitializeResult{
 			Capabilities:    discovered.Capabilities,
 			Instructions:    discovered.Instructions,
@@ -148,7 +149,7 @@ func (c *Client) Initialize(ctx context.Context, options ...RequestOption) (*sch
 	c.negotiated = &result
 	c.stateMu.Unlock()
 	// Start background pinger if configured
-	c.startPinger()
+	c.startPinger(ctx, options...)
 	return &result, nil
 }
 
@@ -366,14 +367,28 @@ func (c *Client) ensureInitialized(ctx context.Context) error {
 
 // startPinger launches a background goroutine that periodically sends MCP ping.
 // It stops when Close() is called. If ping fails, it attempts to reconnect.
-func (c *Client) startPinger() {
+func (c *Client) startPinger(ctx context.Context, options ...RequestOption) {
 	if c.pingInterval <= 0 {
 		return
 	}
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
 	if c.pingStop != nil {
 		return // already running
 	}
+	// Keep only the selected transport credential. Request deadlines, values
+	// and cancellation belong to the caller; keepalive lasts until Close.
+	background, cancel := context.WithCancel(context.Background())
+	token, _ := ctx.Value(authtransport.ContextAuthTokenKey).(string)
+	if selected := NewRequestOptions(options).StringToken; selected != "" {
+		token = selected
+	}
+	if token != "" {
+		background = context.WithValue(background, authtransport.ContextAuthTokenKey, token)
+	}
 	c.pingStop = make(chan struct{})
+	c.pingCancel = cancel
+	stop := c.pingStop
 	c.pingWG.Add(1)
 	go func() {
 		defer c.pingWG.Done()
@@ -382,8 +397,7 @@ func (c *Client) startPinger() {
 		for {
 			select {
 			case <-ticker.C:
-				// Use a detached context to avoid tying ping to caller deadlines
-				ctx := context.Background()
+				ctx := background
 				if !c.isInitialized() {
 					continue
 				}
@@ -396,7 +410,7 @@ func (c *Client) startPinger() {
 					// Otherwise attempt reconnect and continue.
 					_ = c.reconnectAndInitialize(ctx)
 				}
-			case <-c.pingStop:
+			case <-stop:
 				return
 			}
 		}
@@ -409,12 +423,18 @@ func (c *Client) startPinger() {
 // goroutines would otherwise leak (see github.com/viant/jsonrpc streamable
 // Client.Close).
 func (c *Client) Close() {
-	if c.pingStop != nil {
+	c.stateMu.Lock()
+	if c.pingCancel != nil {
+		c.pingCancel()
+		c.pingCancel = nil
 		close(c.pingStop)
-		c.pingWG.Wait()
-		c.pingStop = nil
 	}
-	if t := c.transport; t != nil {
+	c.stateMu.Unlock()
+	c.pingWG.Wait()
+	c.stateMu.RLock()
+	t := c.transport
+	c.stateMu.RUnlock()
+	if t != nil {
 		if closer, ok := t.(interface{ Close() error }); ok {
 			_ = closer.Close()
 		} else if closer, ok := t.(interface{ Close() }); ok {
