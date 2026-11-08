@@ -8,7 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/viant/embedius/bm25"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -17,6 +19,8 @@ import (
 const MaxCatalogPageSize = 1000
 
 type CatalogQuery struct {
+	// Search ranks natural-language terms with BM25. Literal filters still apply.
+	Search           string   `json:"search,omitempty"`
 	OwnerIDs         []string `json:"ownerIds,omitempty"`
 	Namespace        string   `json:"namespace,omitempty"`
 	NameTerms        []string `json:"nameTerms,omitempty"`
@@ -48,6 +52,8 @@ type Catalog[T any] struct {
 	order      []uint32
 	partitions map[string][]uint32
 	id         string
+	lexical    *bm25.Index
+	lexicalErr error
 }
 
 var ErrCatalogCursor = errors.New("catalog cursor does not match current snapshot and query")
@@ -75,6 +81,13 @@ func NewCatalog[T any](snapshot string, items []CatalogItem[T]) *Catalog[T] {
 		ns := items[i].Namespace
 		c.partitions[ns] = append(c.partitions[ns], i)
 	}
+	documents := make([]bm25.Document, 0, len(c.order))
+	for _, i := range c.order {
+		item := c.items[i]
+		documents = append(documents, bm25.Document{ID: strconv.FormatUint(uint64(i), 10), Text: strings.Join([]string{item.Name, item.Description, item.Namespace, item.URI, item.Provider}, " ")})
+	}
+	// Ordinal IDs are unique and construction has no external dependencies.
+	c.lexical, c.lexicalErr = bm25.New(context.Background(), documents)
 	sum := sha256.Sum256([]byte(snapshot))
 	c.id = base64.RawURLEncoding.EncodeToString(sum[:])
 	return c
@@ -126,6 +139,7 @@ func (c *Catalog[T]) Page(ctx context.Context, query CatalogQuery) (*CatalogPage
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	query.Search = strings.TrimSpace(query.Search)
 	query.OwnerIDs = normalizeOwners(query.OwnerIDs)
 	query.NameTerms = normalizeTerms(query.NameTerms)
 	query.DescriptionTerms = normalizeTerms(query.DescriptionTerms)
@@ -160,12 +174,32 @@ func (c *Catalog[T]) Page(ctx context.Context, query CatalogQuery) (*CatalogPage
 	if query.Namespace != "" {
 		order = c.partitions[query.Namespace]
 	}
+	if query.Search != "" {
+		if c.lexicalErr != nil {
+			return nil, c.lexicalErr
+		}
+		hits, err := c.lexical.Search(ctx, query.Search, 0)
+		if err != nil {
+			return nil, err
+		}
+		order = make([]uint32, 0, len(hits))
+		for _, hit := range hits {
+			id, err := strconv.ParseUint(hit.ID, 10, 32)
+			if err != nil {
+				return nil, err
+			}
+			order = append(order, uint32(id))
+		}
+	}
 	result := &CatalogPage[T]{Items: make([]T, 0, query.Limit)}
 	for n, i := range order {
 		if n%64 == 0 {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
+		}
+		if query.Namespace != "" && c.items[i].Namespace != query.Namespace {
+			continue
 		}
 		if !matchesOwner(c.items[i].OwnerID, query.OwnerIDs) {
 			continue

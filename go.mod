@@ -1,28 +1,33 @@
 module github.com/viant/mcp
 
-go 1.24.0
+go 1.25.1
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/stretchr/testify v1.11.1
-	github.com/viant/afs v1.29.0
-	github.com/viant/gosh v0.2.1
+	github.com/viant/afs v1.30.0
+	github.com/viant/embedius v0.5.8-0.20261108015858-2dbb2e0a515a
+	github.com/viant/gosh v0.2.4
 	github.com/viant/jsonrpc v0.25.1
 	github.com/viant/mcp-protocol v0.19.2-0.20261029232114-446f89dc454b
-	github.com/viant/scy v0.24.0
-	golang.org/x/oauth2 v0.30.0
+	github.com/viant/scy v0.25.3
+	golang.org/x/oauth2 v0.32.0
 )
 
 require (
-	cloud.google.com/go/compute/metadata v0.3.0 // indirect
+	github.com/blevesearch/snowballstem v0.9.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+)
+
+require (
+	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
-	github.com/goccy/go-json v0.10.2 // indirect
-	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lestrrat-go/backoff/v2 v2.0.8 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.2 // indirect
@@ -36,13 +41,13 @@ require (
 	github.com/tiendc/go-deepcopy v1.7.1
 	github.com/viant/parsly v0.3.3 // indirect
 	github.com/viant/tagly v0.4.2-0.20261028223500-81e046a19ef9 // indirect
-	github.com/viant/toolbox v0.36.0 // indirect
+	github.com/viant/toolbox v0.37.1-0.20241210210120-32350b063cf8 // indirect
 	github.com/viant/x v0.4.1-0.20260914174450-0e043f24aec5 // indirect
-	github.com/viant/xreflect v0.6.2 // indirect
+	github.com/viant/xreflect v0.7.3 // indirect
 	github.com/viant/xunsafe v0.10.3 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
-	golang.org/x/mod v0.21.0 // indirect
-	golang.org/x/net v0.46.0 // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/net v0.46.1-0.20251013234738-63d1a5100f82 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
