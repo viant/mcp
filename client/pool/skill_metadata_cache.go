@@ -50,12 +50,12 @@ func (c *managedClient) skillMetadata(ctx context.Context, entryKey string, load
 		if !valid {
 			return nil, time.Time{}, fmt.Errorf("skill metadata credential changed during read")
 		}
-		if ttl != nil && *ttl <= 0 {
+		if ttl == nil || *ttl <= 0 {
 			unretained = value
 			return nil, time.Time{}, errSkillNotRetained
 		}
 		duration := 5 * time.Minute
-		if ttl != nil && time.Duration(*ttl)*time.Millisecond < duration {
+		if *ttl < int(duration/time.Millisecond) {
 			duration = time.Duration(*ttl) * time.Millisecond
 		}
 		return value, time.Now().Add(duration), nil
@@ -101,7 +101,15 @@ func (c *managedClient) ReadSkillResource(ctx context.Context, manifest *schema.
 			return json.RawMessage("null"), &zero, nil
 		}
 		raw, err := json.Marshal(result)
-		return raw, manifest.TtlMs, err
+		// A manifest describes immutable bytes; the resource response controls
+		// how long the caller may reuse the read. Honor the shorter lifetime.
+		ttl := result.TtlMs
+		if manifest.TtlMs == nil || result.ResultType != "" && result.ResultType != "complete" {
+			ttl = 0
+		} else if *manifest.TtlMs < ttl {
+			ttl = *manifest.TtlMs
+		}
+		return raw, &ttl, err
 	}, opts...)
 	if err != nil {
 		return nil, err

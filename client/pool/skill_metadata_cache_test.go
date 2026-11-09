@@ -20,6 +20,7 @@ type skillCacheClient struct {
 	gets, reads atomic.Int32
 	ttl         *int
 	legacy      bool
+	resourceTTL int
 }
 
 func (c *skillCacheClient) GetSkill(_ context.Context, uri string, _ ...mcpclient.RequestOption) (*schema.GetSkillResult, error) {
@@ -36,7 +37,7 @@ func (c *skillCacheClient) ListSkills(context.Context, *string, ...mcpclient.Req
 }
 func (c *skillCacheClient) ReadResource(_ context.Context, p *schema.ReadResourceRequestParams, _ ...mcpclient.RequestOption) (*schema.ReadResourceResult, error) {
 	c.reads.Add(1)
-	result := &schema.ReadResourceResult{CacheScope: schema.ReadResourceResultCacheScopePrivate, ResultType: "complete", Contents: []schema.ReadResourceResultContentsElem{{Uri: p.Uri, Text: skillCacheDocument}}}
+	result := &schema.ReadResourceResult{TtlMs: c.resourceTTL, CacheScope: schema.ReadResourceResultCacheScopePrivate, ResultType: "complete", Contents: []schema.ReadResourceResultContentsElem{{Uri: p.Uri, Text: skillCacheDocument}}}
 	if c.legacy {
 		result.CacheScope = ""
 		result.ResultType = ""
@@ -46,7 +47,8 @@ func (c *skillCacheClient) ReadResource(_ context.Context, p *schema.ReadResourc
 
 func TestSkillMetadataReusesScopedCatalogAndInvalidatesPublication(t *testing.T) {
 	m, _, _, a, b := catalogSetup(t, true)
-	client := &skillCacheClient{}
+	ttl := 60000
+	client := &skillCacheClient{ttl: &ttl, resourceTTL: ttl}
 	a.entry.client = client
 	b.entry.client = client
 	alice := authctx.WithUserInfo(context.Background(), &authctx.UserInfo{Subject: "alice"})
@@ -90,7 +92,8 @@ func TestSkillMetadataHonorsExplicitZeroTTLAndRequestCredentials(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.EqualValues(t, 2, client.gets.Load())
-	client.ttl = nil
+	ttl := 60000
+	client.ttl = &ttl
 	for _, token := range []string{"one", "one", "two"} {
 		_, err := a.GetSkill(context.Background(), uri, mcpclient.WithAuthToken(token))
 		require.NoError(t, err)
@@ -130,5 +133,31 @@ func TestSkillDocumentCachePreservesLegacyMissingHints(t *testing.T) {
 		require.Empty(t, result.CacheScope)
 		require.Equal(t, skillCacheDocument, result.Contents[0].Text)
 	}
-	require.EqualValues(t, 1, source.reads.Load())
+	require.EqualValues(t, 2, source.reads.Load(), "missing freshness hints require revalidation")
+}
+
+func TestSkillMetadataRequiresProducerFreshnessForEachRead(t *testing.T) {
+	_, _, _, managed, _ := catalogSetup(t, false)
+	source := &skillCacheClient{}
+	managed.entry.client = source
+	ctx := context.Background()
+	uri := "skill://example/review/SKILL.md"
+	for i := 0; i < 2; i++ {
+		manifest, err := managed.GetSkill(ctx, uri)
+		require.NoError(t, err)
+		_, err = managed.ReadSkillResource(ctx, manifest, uri)
+		require.NoError(t, err)
+	}
+	require.EqualValues(t, 2, source.gets.Load())
+	require.EqualValues(t, 2, source.reads.Load())
+	ttl := 60000
+	source.ttl = &ttl
+	for i := 0; i < 2; i++ {
+		manifest, err := managed.GetSkill(ctx, uri)
+		require.NoError(t, err)
+		_, err = managed.ReadSkillResource(ctx, manifest, uri)
+		require.NoError(t, err)
+	}
+	require.EqualValues(t, 3, source.gets.Load())
+	require.EqualValues(t, 4, source.reads.Load(), "manifest TTL must not override a zero resource TTL")
 }
