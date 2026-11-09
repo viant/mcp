@@ -10,7 +10,7 @@ require (
 	github.com/viant/afs v1.30.0
 	github.com/viant/embedius v0.5.8-0.20261108015858-2dbb2e0a515a
 	github.com/viant/gosh v0.2.4
-	github.com/viant/jsonrpc v0.25.1
+	github.com/viant/jsonrpc v0.25.2-0.20261109161826-0c7edf60cfc5
 	github.com/viant/mcp-protocol v0.19.2-0.20261029232114-446f89dc454b
 	github.com/viant/scy v0.25.3
 	golang.org/x/oauth2 v0.32.0

@@ -716,7 +716,7 @@ func (c *ClientOptions) getTransport(ctx context.Context, handler pclient.Handle
 	case "streamable":
 		httpOptions := c.Transport.ClientTransportHTTP
 
-		opts := []streamable.Option{}
+		opts := []streamable.Option{streamable.WithOptionalSession()}
 		if c.ProtocolVersion != "" {
 			opts = append(opts, streamable.WithProtocolVersion(c.ProtocolVersion))
 		}

@@ -16,8 +16,14 @@ import (
 )
 
 func TestAutomaticHTTPNegotiatesBeforeSendingVersionHeader(t *testing.T) {
-	for _, selected := range []string{compatibilityProtocolVersionJune2025, schema.LegacyProtocolVersion, "2099-01-01"} {
-		t.Run(selected, func(t *testing.T) {
+	for _, tc := range []struct{ version, session string }{
+		{compatibilityProtocolVersionJune2025, "synthetic-session"},
+		{compatibilityProtocolVersionJune2025, ""},
+		{schema.LegacyProtocolVersion, "synthetic-session"},
+		{"2099-01-01", "synthetic-session"},
+	} {
+		selected := tc.version
+		t.Run(selected+"/"+tc.session, func(t *testing.T) {
 			var mu sync.Mutex
 			var methods []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +63,11 @@ func TestAutomaticHTTPNegotiatesBeforeSendingVersionHeader(t *testing.T) {
 					if got := requestBodyProtocolVersion(request.Method, request.Params); got != compatibilityProtocolVersionJune2025 {
 						t.Errorf("initial offer=%s", got)
 					}
-					w.Header().Set("Mcp-Session-Id", "synthetic-session")
+					if tc.session != "" {
+						w.Header().Set("Mcp-Session-Id", tc.session)
+					}
+				} else if r.Header.Get("Mcp-Session-Id") != tc.session {
+					t.Errorf("unexpected session header on %s", request.Method)
 				} else if r.Header.Get(schema.HeaderProtocolVersion) != selected {
 					t.Errorf("selected version header=%q; want %s", r.Header.Get(schema.HeaderProtocolVersion), selected)
 				}
