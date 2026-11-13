@@ -19,6 +19,26 @@ type persistentCatalogSource struct {
 	calls, mutations atomic.Int32
 	ttl              int
 	scope            schema.ListToolsResultCacheScope
+	noNotifications  bool
+}
+
+func (c *persistentCatalogSource) NegotiatedServer() (*schema.InitializeResult, error) {
+	enabled := !c.noNotifications
+	return &schema.InitializeResult{ProtocolVersion: schema.LegacyProtocolVersion, Capabilities: schema.ServerCapabilities{Tools: &schema.ServerCapabilitiesTools{ListChanged: &enabled}}}, nil
+}
+
+type notifyingReceiptCatalog struct{ *receiptCatalogClient }
+
+func (*notifyingReceiptCatalog) NegotiatedServer() (*schema.InitializeResult, error) {
+	enabled := true
+	return &schema.InitializeResult{ProtocolVersion: schema.LegacyProtocolVersion, Capabilities: schema.ServerCapabilities{Tools: &schema.ServerCapabilitiesTools{ListChanged: &enabled}}}, nil
+}
+
+func persistentReceiptFixture(t *testing.T) (*Manager, *managedClient, *receiptCatalogClient, context.Context, func()) {
+	t.Helper()
+	m, managed, source, ctx, release := receiptFixture(t)
+	managed.entry.client = &notifyingReceiptCatalog{source}
+	return m, managed, source, ctx, release
 }
 
 func (c *persistentCatalogSource) ListTools(ctx context.Context, _ *string, _ ...client.RequestOption) (*schema.ListToolsResult, error) {
@@ -38,7 +58,7 @@ func (c *persistentCatalogSource) CallTool(context.Context, *schema.CallToolRequ
 	return &schema.CallToolResult{}, nil
 }
 
-func TestPersistentToolCatalogRetainsPrivatePagesRegardlessOfProducerTTL(t *testing.T) {
+func TestPersistentToolCatalogRetainsNotifyingPrivatePagesRegardlessOfProducerTTL(t *testing.T) {
 	for _, ttl := range []int{0, 1} {
 		t.Run(fmt.Sprint(ttl), func(t *testing.T) {
 			m, _, _, managed, _ := catalogSetup(t, false, WithPersistentToolCatalog())
@@ -110,7 +130,7 @@ func TestPersistentToolCatalogPreservesPrincipalCredentialConnectionAndEndpointS
 }
 
 func TestPersistentToolCatalogNotificationRefreshesAndFencesInflightPublication(t *testing.T) {
-	m, managed, source, ctx, release := receiptFixture(t)
+	m, managed, source, ctx, release := persistentReceiptFixture(t)
 	require.NoError(t, WithPersistentToolCatalog()(m))
 	first := startReceiptRead(ctx, managed)
 	<-source.entered
@@ -141,7 +161,7 @@ func TestPersistentToolCatalogNotificationRefreshesAndFencesInflightPublication(
 }
 
 func TestPersistentToolCatalogConcurrentReadsShareExistingSingleflight(t *testing.T) {
-	m, managed, source, ctx, release := receiptFixture(t)
+	m, managed, source, ctx, release := persistentReceiptFixture(t)
 	require.NoError(t, WithPersistentToolCatalog()(m))
 	first := startReceiptRead(ctx, managed)
 	<-source.entered
@@ -246,7 +266,7 @@ func TestPersistentToolCatalogPublicPagesRemainShareable(t *testing.T) {
 }
 
 func TestPersistentToolCatalogDoesNotRetainFailedSource(t *testing.T) {
-	m, managed, source, ctx, release := receiptFixture(t)
+	m, managed, source, ctx, release := persistentReceiptFixture(t)
 	require.NoError(t, WithPersistentToolCatalog()(m))
 	source.firstError = true
 	first := startReceiptRead(ctx, managed)

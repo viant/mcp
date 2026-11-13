@@ -74,7 +74,7 @@ func TestPreparedToolCatalogSelectionPreservesIdentityAndIsolation(t *testing.T)
 }
 
 func TestHTTPPreparedCatalogSelectCopiesOnlyRequestedShape(t *testing.T) {
-	f := newIdentityFixture(t, identityFixtureOptions{persistent: true, large: true})
+	f := newIdentityFixture(t, identityFixtureOptions{persistent: true, large: true, ttl: 60000})
 	ctx := identityUser("alice", "a")
 	client, err := f.manager.Get(ctx, "", "server")
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestHTTPPreparedCatalogSelectCopiesOnlyRequestedShape(t *testing.T) {
 func TestNativeCatalogSelectionPreservesNilAndEmptyNames(t *testing.T) {
 	for _, public := range []bool{false, true} {
 		t.Run(map[bool]string{false: "private", true: "public"}[public], func(t *testing.T) {
-			fixture := newIdentityFixture(t, identityFixtureOptions{public: public, persistent: true, paginated: true})
+			fixture := newIdentityFixture(t, identityFixtureOptions{public: public, persistent: true, paginated: true, ttl: 60000})
 			ctx := identityUser("alice", "a")
 			client, err := fixture.manager.Get(ctx, "", "server")
 			require.NoError(t, err)

@@ -18,6 +18,7 @@ type sensitiveClient struct {
 	subscriptionCancel context.CancelFunc
 	closeOnce          sync.Once
 	subscriptionLost   atomic.Bool
+	toolListChanges    bool // Negotiated once; July streams must acknowledge tools.
 }
 
 func (c *sensitiveClient) BeginSensitivePayload() (func(), error) {

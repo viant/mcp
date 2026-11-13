@@ -15,7 +15,7 @@ import (
 func TestIsCurrentClientPinsExactOwnerSessionAndDoesNotRenew(t *testing.T) {
 	for _, local := range []bool{false, true} {
 		t.Run(map[bool]string{false: "remote", true: "registered-local"}[local], func(t *testing.T) {
-			inventory := &localInventoryProvider{names: []string{"external"}}
+			inventory := &listBenchProvider{configs: map[string]*cfg.MCPClient{"external": {ClientOptions: &mcp.ClientOptions{}}}}
 			constructions := 0
 			mgr, err := New(inventory, WithClientFactory(func(context.Context, string, string) (mcpclient.Interface, error) {
 				constructions++

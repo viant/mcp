@@ -116,7 +116,7 @@ func TestToolCatalogIdentityNeverInitializesOrListsColdSource(t *testing.T) {
 func TestToolCatalogIdentityMatchesSnapshotAndPreservesScopeAndInvalidation(t *testing.T) {
 	for _, public := range []bool{false, true} {
 		t.Run(fmt.Sprint("public=", public), func(t *testing.T) {
-			f := newIdentityFixture(t, identityFixtureOptions{public: public, persistent: true, paginated: true})
+			f := newIdentityFixture(t, identityFixtureOptions{public: public, persistent: true, paginated: true, ttl: 60000})
 			ctx := identityUser("alice", "")
 			if !public {
 				ctx = identityUser("alice", "a")
@@ -209,7 +209,7 @@ func TestToolCatalogIdentityMatchesOperationLocalZeroTTLSnapshot(t *testing.T) {
 }
 
 func BenchmarkToolCatalogIdentityLargeHTTP(b *testing.B) {
-	f := newIdentityFixture(b, identityFixtureOptions{persistent: true, large: true})
+	f := newIdentityFixture(b, identityFixtureOptions{persistent: true, large: true, ttl: 60000})
 	ctx := identityUser("alice", "a")
 	cli, err := f.manager.Get(ctx, "", "server")
 	require.NoError(b, err)

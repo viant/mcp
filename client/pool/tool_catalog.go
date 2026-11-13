@@ -25,11 +25,28 @@ import (
 
 // WithPersistentToolCatalog lets the application retain scoped tools/list
 // metadata until notification, configuration/connection invalidation or manager
-// lifetime ends, regardless of producer TTL. Retained memory follows that
-// lifetime rather than the legacy page-count cap. It changes no tool invocation or
+// lifetime ends when tool-change delivery is available. Other producers retain
+// their existing TTL policy, refreshed lazily on the next catalog read.
+// Retained memory follows the manager lifetime rather than the legacy page-count
+// cap. It changes no tool invocation or
 // credential fence. Without this option the producer/legacy TTL policy remains.
 func WithPersistentToolCatalog() Option {
 	return func(m *Manager) error { m.persistentToolCatalog = true; return nil }
+}
+
+// Negotiation is already prepared; this never initializes or queries a peer.
+// July delivery requires the acknowledged stream, not just advertised support.
+func toolCatalogNotificationsAvailable(peer mcpclient.Interface) bool {
+	if managed, ok := peer.(*sensitiveClient); ok {
+		return managed.toolListChanges && !managed.subscriptionLost.Load()
+	}
+	if negotiated, ok := peer.(interface {
+		NegotiatedServer() (*mcpschema.InitializeResult, error)
+	}); ok {
+		result, err := negotiated.NegotiatedServer()
+		return err == nil && result != nil && result.ProtocolVersion != mcpschema.LatestProtocolVersion && result.Capabilities.Tools != nil && result.Capabilities.Tools.ListChanged != nil && *result.Capabilities.Tools.ListChanged
+	}
+	return false
 }
 
 // Only tools/list metadata is retained. Each generation owns one decoded copy;
@@ -86,8 +103,8 @@ type noRetryToolCatalogPage struct {
 
 // WithToolCatalogReadSnapshot reuses one authenticated tools/list generation
 // while assembling a single tool surface. Explicit ttlMs=0 still prevents
-// reuse by later independent requests unless the manager explicitly owns
-// persistent catalog retention.
+// reuse by later independent requests unless notification-backed persistent
+// catalog retention is available.
 func WithToolCatalogReadSnapshot(ctx context.Context) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -248,6 +265,7 @@ func (c *managedClient) listTools(ctx context.Context, client mcpclient.Interfac
 				_, cacheErr = rand.Read(pending.revision[:])
 			}
 		}
+		persistent := m.persistentToolCatalog && toolCatalogNotificationsAvailable(client)
 		m.mu.Lock()
 		if result != nil && result.CacheScope == mcpschema.ListToolsResultCacheScopePrivate {
 			if m.protectedToolCatalog == nil {
@@ -263,7 +281,7 @@ func (c *managedClient) listTools(ctx context.Context, client mcpclient.Interfac
 			pending.content = content
 		}
 		if m.toolCatalog[key] == pending {
-			if publishable && (m.persistentToolCatalog || !(result.CacheScope != "" && result.TtlMs == 0)) {
+			if publishable && (persistent || !(result.CacheScope != "" && result.TtlMs == 0)) {
 				pending.public = scope == "public"
 				if result.NextCursor != nil && *result.NextCursor != "" {
 					pending.nextCursor = "cursor:" + *result.NextCursor
@@ -272,7 +290,7 @@ func (c *managedClient) listTools(ctx context.Context, client mcpclient.Interfac
 				for i, tool := range result.Tools {
 					pending.names[i] = tool.Name
 				}
-				if !m.persistentToolCatalog {
+				if !persistent {
 					ttl := 5 * time.Minute
 					if result.TtlMs > 0 && time.Duration(result.TtlMs)*time.Millisecond < ttl {
 						ttl = time.Duration(result.TtlMs) * time.Millisecond
@@ -509,7 +527,7 @@ func (c *managedClient) toolCatalogScopeWithSnapshotMode(ctx context.Context, al
 
 // ToolCatalogSnapshot returns an already cached, complete tools/list catalog,
 // including a zero-TTL snapshot held by this operation or an explicitly
-// persistent manager. Its opaque identity follows the selected retention policy
+// notification-backed persistent manager. Its opaque identity follows the selected retention policy
 // and changes on
 // publication, connection/configuration changes or invalidation. It never lists
 // tools or stores a parallel catalog.
