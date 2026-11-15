@@ -74,19 +74,17 @@ func injectAuthMeta(req *jsonrpc.Request, token string) {
 	if token == "" {
 		return
 	}
-	var params map[string]interface{}
+	var params map[string]json.RawMessage
 	if len(req.Params) > 0 && string(req.Params) != "null" {
 		_ = json.Unmarshal(req.Params, &params)
 	}
 	if params == nil {
-		params = map[string]interface{}{}
+		params = map[string]json.RawMessage{}
 	}
 	var meta map[string]interface{}
-	if v, ok := params["_meta"].(map[string]interface{}); ok {
-		meta = v
-	} else {
+	_ = json.Unmarshal(params["_meta"], &meta)
+	if meta == nil {
 		meta = map[string]interface{}{}
-		params["_meta"] = meta
 	}
 	var auth map[string]interface{}
 	if v, ok := meta["authorization"].(map[string]interface{}); ok {
@@ -96,6 +94,7 @@ func injectAuthMeta(req *jsonrpc.Request, token string) {
 		meta["authorization"] = auth
 	}
 	auth["token"] = token
+	params["_meta"], _ = json.Marshal(meta)
 	if raw, err := json.Marshal(params); err == nil {
 		req.Params = raw
 	}

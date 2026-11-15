@@ -19,23 +19,29 @@ func (h *Handler) prepareProtocolRequest(ctx context.Context, request *jsonrpc.R
 	if request.Method == schema.MethodInitialize {
 		return ctx, schema.LegacyProtocolVersion, nil
 	}
-	var params map[string]interface{}
+	var params map[string]json.RawMessage
 	if len(request.Params) > 0 && string(request.Params) != "null" {
-		if err := conv.DecodeNumbers(request.Params, &params); err != nil {
+		if err := json.Unmarshal(request.Params, &params); err != nil {
 			return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
 		}
 	}
 	if params == nil {
-		params = map[string]interface{}{}
+		params = map[string]json.RawMessage{}
 	}
-	meta, _ := params["_meta"].(map[string]interface{})
+	var metadata any
+	if len(params["_meta"]) > 0 {
+		if err := conv.DecodeNumbers(params["_meta"], &metadata); err != nil {
+			return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
+		}
+	}
+	meta, _ := metadata.(map[string]interface{})
 	if meta == nil {
 		legacyVersion := h.legacyProtocolVersion()
 		meta = map[string]interface{}{
 			"io.modelcontextprotocol/clientCapabilities": map[string]interface{}{},
 			"io.modelcontextprotocol/protocolVersion":    legacyVersion,
 		}
-		params["_meta"] = meta
+		params["_meta"], _ = json.Marshal(meta)
 		raw, err := json.Marshal(params)
 		if err != nil {
 			return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
@@ -67,6 +73,7 @@ func (h *Handler) prepareProtocolRequest(ctx context.Context, request *jsonrpc.R
 			metaChanged = true
 		}
 		if metaChanged {
+			params["_meta"], _ = json.Marshal(meta)
 			raw, err := json.Marshal(params)
 			if err != nil {
 				return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)

@@ -683,19 +683,24 @@ func (c *Client) withProtocolMeta(req *jsonrpc.Request) {
 	if c.protocolVersion != schema.LatestProtocolVersion || req == nil {
 		return
 	}
-	var params map[string]interface{}
+	var params map[string]json.RawMessage
 	if len(req.Params) > 0 && string(req.Params) != "null" {
-		if err := conv.DecodeNumbers(req.Params, &params); err != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return
 		}
 	}
 	if params == nil {
-		params = map[string]interface{}{}
+		params = map[string]json.RawMessage{}
 	}
-	meta, _ := params["_meta"].(map[string]interface{})
+	var metadata any
+	if len(params["_meta"]) > 0 {
+		if err := conv.DecodeNumbers(params["_meta"], &metadata); err != nil {
+			return
+		}
+	}
+	meta, _ := metadata.(map[string]interface{})
 	if meta == nil {
 		meta = map[string]interface{}{}
-		params["_meta"] = meta
 	}
 	for key, value := range c.meta {
 		if _, reserved := meta[key]; !reserved {
@@ -711,6 +716,7 @@ func (c *Client) withProtocolMeta(req *jsonrpc.Request) {
 	if loggingLevel != nil {
 		meta["io.modelcontextprotocol/logLevel"] = *loggingLevel
 	}
+	params["_meta"], _ = json.Marshal(meta)
 	if raw, err := json.Marshal(params); err == nil {
 		req.Params = raw
 	}
@@ -750,21 +756,24 @@ func withAuthMeta(req *jsonrpc.Request, token string) *jsonrpc.Request {
 	if token == "" {
 		return req
 	}
-	var params map[string]interface{}
+	var params map[string]json.RawMessage
 	if len(req.Params) > 0 && string(req.Params) != "null" {
-		if err := conv.DecodeNumbers(req.Params, &params); err != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return req
 		}
 	}
 	if params == nil {
-		params = map[string]interface{}{}
+		params = map[string]json.RawMessage{}
 	}
-	var meta map[string]interface{}
-	if v, ok := params["_meta"].(map[string]interface{}); ok {
-		meta = v
-	} else {
+	var metadata any
+	if len(params["_meta"]) > 0 {
+		if err := conv.DecodeNumbers(params["_meta"], &metadata); err != nil {
+			return req
+		}
+	}
+	meta, _ := metadata.(map[string]interface{})
+	if meta == nil {
 		meta = map[string]interface{}{}
-		params["_meta"] = meta
 	}
 	var auth map[string]interface{}
 	if v, ok := meta["authorization"].(map[string]interface{}); ok {
@@ -774,6 +783,7 @@ func withAuthMeta(req *jsonrpc.Request, token string) *jsonrpc.Request {
 		meta["authorization"] = auth
 	}
 	auth["token"] = token
+	params["_meta"], _ = json.Marshal(meta)
 	if raw, err := json.Marshal(params); err == nil {
 		req.Params = raw
 	}

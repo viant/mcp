@@ -29,6 +29,13 @@ func (h *Handler) CallTool(ctx context.Context, request *jsonrpc.Request) (*sche
 	if err := json.Unmarshal(request.Params, &callToolRequest.Params); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
+	var original struct {
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	if err := json.Unmarshal(request.Params, &original); err != nil {
+		return nil, jsonrpc.NewInvalidParamsError("invalid tool arguments", nil)
+	}
+	ctx = context.WithValue(ctx, toolArgumentsContextKey{}, &toolArgumentsContext{request: callToolRequest, raw: original.Arguments})
 	id, _ := jsonrpc.AsRequestIntId(request.Id)
 	return h.handler.CallTool(ctx, &jsonrpc.TypedRequest[*schema.CallToolRequest]{Request: callToolRequest, Id: uint64(id)})
 }

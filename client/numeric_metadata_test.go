@@ -38,11 +38,23 @@ func TestCallToolMetadataUsesLegacyNumericArguments(t *testing.T) {
 }
 
 func TestNumericMetadataAdaptersDoNotRewriteDecodeErrors(t *testing.T) {
-	for _, raw := range []string{`{"name":"numeric","arguments":{"n":1e400}}`, `{"name":"numeric"} null`, `{"name":`} {
+	for _, raw := range []string{`{"name":"numeric","_meta":{"value":1e400}}`, `{"name":"numeric"} null`, `{"name":`} {
 		req := &jsonrpc.Request{Method: schema.MethodToolsCall, Params: json.RawMessage(raw)}
 		c := New("numeric", "1", nil, WithProtocolVersion(schema.LatestProtocolVersion))
 		c.withProtocolMeta(req)
 		require.Equal(t, raw, string(req.Params))
 		require.Equal(t, raw, string(withAuthMeta(req, "token").Params))
 	}
+}
+
+func TestMetadataPreservesOpaqueToolArgumentBytes(t *testing.T) {
+	const arguments = `{"definition":{"z":9007199254740993,"a":"text"},"largeExponent":1e400}`
+	req := &jsonrpc.Request{Method: schema.MethodToolsCall, Params: json.RawMessage(`{"name":"example","arguments":` + arguments + `}`)}
+	c := New("example", "1", nil, WithProtocolVersion(schema.LatestProtocolVersion))
+	c.withProtocolMeta(req)
+	withAuthMeta(req, "synthetic-token")
+	var params map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(req.Params, &params))
+	require.Equal(t, arguments, string(params["arguments"]), "metadata adapters must not decode or reorder tool content")
+	require.NotEmpty(t, params["_meta"])
 }
