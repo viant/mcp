@@ -41,12 +41,9 @@ func (h *Handler) prepareProtocolRequest(ctx context.Context, request *jsonrpc.R
 			"io.modelcontextprotocol/clientCapabilities": map[string]interface{}{},
 			"io.modelcontextprotocol/protocolVersion":    legacyVersion,
 		}
-		params["_meta"], _ = json.Marshal(meta)
-		raw, err := json.Marshal(params)
-		if err != nil {
-			return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
+		if err := conv.SetRequestMeta(request, params, meta); err != nil {
+			return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), nil)
 		}
-		request.Params = raw
 		return ctx, legacyVersion, nil
 	}
 	version, _ := meta["io.modelcontextprotocol/protocolVersion"].(string)
@@ -73,12 +70,9 @@ func (h *Handler) prepareProtocolRequest(ctx context.Context, request *jsonrpc.R
 			metaChanged = true
 		}
 		if metaChanged {
-			params["_meta"], _ = json.Marshal(meta)
-			raw, err := json.Marshal(params)
-			if err != nil {
-				return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), request.Params)
+			if err := conv.SetRequestMeta(request, params, meta); err != nil {
+				return ctx, "", jsonrpc.NewInvalidParamsError(err.Error(), nil)
 			}
-			request.Params = raw
 		}
 		return ctx, version, nil
 	}

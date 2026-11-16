@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"sync/atomic"
 
 	"github.com/viant/jsonrpc"
 	"github.com/viant/mcp-protocol/schema"
 	"github.com/viant/mcp/client"
+	"github.com/viant/mcp/internal/conv"
 )
 
 // Adapter adapts a handler Handler to implement the client.Interface
@@ -94,10 +97,7 @@ func injectAuthMeta(req *jsonrpc.Request, token string) {
 		meta["authorization"] = auth
 	}
 	auth["token"] = token
-	params["_meta"], _ = json.Marshal(meta)
-	if raw, err := json.Marshal(params); err == nil {
-		req.Params = raw
-	}
+	_ = conv.SetRequestMeta(req, params, meta)
 }
 
 // ---- New client operations ----
@@ -425,6 +425,17 @@ func (a *Adapter) CallTool(ctx context.Context, params *schema.CallToolRequestPa
 	if err != nil {
 		return nil, err
 	}
+	if params != nil {
+		for name, value := range params.Arguments {
+			if raw, ok := value.(json.RawMessage); ok && len(raw) > 0 {
+				req.Params, err = sjson.SetRawBytes(req.Params, "arguments."+gjson.Escape(name), raw)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
 	if ro := client.NewRequestOptions(options); ro != nil && ro.RequestId != nil {
 		req.Id = ro.RequestId
 	}

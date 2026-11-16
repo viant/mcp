@@ -30,12 +30,17 @@ func (h *Handler) CallTool(ctx context.Context, request *jsonrpc.Request) (*sche
 		return nil, jsonrpc.NewInvalidParamsError(fmt.Sprintf("failed to parse: %v", err), request.Params)
 	}
 	var original struct {
-		Arguments json.RawMessage `json:"arguments"`
+		Arguments toolArgumentsMember `json:"arguments"`
 	}
 	if err := json.Unmarshal(request.Params, &original); err != nil {
 		return nil, jsonrpc.NewInvalidParamsError("invalid tool arguments", nil)
 	}
-	ctx = context.WithValue(ctx, toolArgumentsContextKey{}, &toolArgumentsContext{request: callToolRequest, raw: original.Arguments})
+	var carrier toolArgumentsContext
+	if !original.Arguments.repeated {
+		carrier = toolArgumentsContext{request: callToolRequest, raw: original.Arguments.raw}
+	}
+	// An ambiguous nested call must also shadow the parent's carrier.
+	ctx = context.WithValue(ctx, toolArgumentsContextKey{}, carrier)
 	id, _ := jsonrpc.AsRequestIntId(request.Id)
 	return h.handler.CallTool(ctx, &jsonrpc.TypedRequest[*schema.CallToolRequest]{Request: callToolRequest, Id: uint64(id)})
 }

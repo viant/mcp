@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,16 +18,17 @@ import (
 )
 
 func TestHTTPToolArgumentsJSONRetainsStandardLegacyClientContract(t *testing.T) {
-	const arguments = `{"definition":{"z":9007199254740993,"a":{"y":1,"b":2}},"enabled":false}`
-	var calls atomic.Int64
+	const arguments = `{ "definition": {"z":9007199254740993, "a":"<sample>&"}, "enabled":false }`
+	type observation struct {
+		raw      json.RawMessage
+		retained bool
+		decoded  map[string]any
+	}
+	observed := make(chan observation, 1)
 	server, err := New(WithNewHandler(protocolserver.WithDefaultHandler(context.Background(), func(handler *protocolserver.DefaultHandler) error {
 		handler.Registry.RegisterToolWithSchema("example", "Example", schema.ToolInputSchema{Type: "object"}, nil, func(ctx context.Context, request *schema.CallToolRequest) (*schema.CallToolResult, *jsonrpc.Error) {
-			calls.Add(1)
-			raw, ok := ToolArgumentsJSON(ctx, request)
-			require.True(t, ok)
-			require.Equal(t, arguments, string(raw))
-			require.Equal(t, false, request.Params.Arguments["enabled"])
-			require.Equal(t, float64(9007199254740992), request.Params.Arguments["definition"].(map[string]any)["z"])
+			raw, retained := ToolArgumentsJSON(ctx, request)
+			observed <- observation{raw: raw, retained: retained, decoded: request.Params.Arguments}
 			return &schema.CallToolResult{Content: []schema.CallToolResultContentElem{schema.TextContent{Type: "text", Text: "ok"}}}, nil
 		})
 		return nil
@@ -54,13 +55,31 @@ func TestHTTPToolArgumentsJSONRetainsStandardLegacyClientContract(t *testing.T) 
 	}
 	session, _ := post(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"legacy-example","version":"1"}}}`, "")
 	require.NotEmpty(t, session)
-	_, raw := post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"example","arguments":`+arguments+`}}`, session)
-	var response struct {
-		Error  *jsonrpc.Error        `json:"error"`
-		Result schema.CallToolResult `json:"result"`
+	params := func(member string) string { return `"params":{"name":"example",` + member + `}` }
+	canonical := `"arguments":` + arguments
+	cases := []struct{ name, members, want string }{
+		{"canonical", params(canonical), arguments},
+		{"legacy case variant", params(`"Arguments":` + arguments), arguments},
+		{"repeated member during legacy normalization", params(`"arguments":{"older":true},` + canonical), arguments},
+		{"repeated JSON-RPC params", params(`"arguments":{"older":true}`) + "," + params(canonical), arguments},
+		{"case variants inside arguments", params(`"arguments":{"uri":"first","URI":"second"}`), `{"uri":"first","URI":"second"}`},
 	}
-	require.NoError(t, json.Unmarshal(raw, &response))
-	require.Nil(t, response.Error)
-	require.True(t, response.Result.IsError == nil || !*response.Result.IsError)
-	require.Equal(t, int64(1), calls.Load())
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, raw := post(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call",%s}`, i+2, tc.members), session)
+			var response struct {
+				Error  *jsonrpc.Error        `json:"error"`
+				Result schema.CallToolResult `json:"result"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &response))
+			require.Nil(t, response.Error)
+			require.True(t, response.Result.IsError == nil || !*response.Result.IsError)
+			got := <-observed
+			require.True(t, got.retained)
+			require.Equal(t, tc.want, string(got.raw))
+			var want map[string]any
+			require.NoError(t, json.Unmarshal([]byte(tc.want), &want))
+			require.Equal(t, want, got.decoded)
+		})
+	}
 }

@@ -48,13 +48,22 @@ func TestNumericMetadataAdaptersDoNotRewriteDecodeErrors(t *testing.T) {
 }
 
 func TestMetadataPreservesOpaqueToolArgumentBytes(t *testing.T) {
-	const arguments = `{"definition":{"z":9007199254740993,"a":"text"},"largeExponent":1e400}`
+	const arguments = `{ "definition": {"z":9007199254740993, "a":"<text>&"}, "largeExponent":1e400 }`
 	req := &jsonrpc.Request{Method: schema.MethodToolsCall, Params: json.RawMessage(`{"name":"example","arguments":` + arguments + `}`)}
 	c := New("example", "1", nil, WithProtocolVersion(schema.LatestProtocolVersion))
 	c.withProtocolMeta(req)
 	withAuthMeta(req, "synthetic-token")
-	var params map[string]json.RawMessage
+	var params struct {
+		Arguments json.RawMessage `json:"arguments"`
+		Meta      struct {
+			Version       string `json:"io.modelcontextprotocol/protocolVersion"`
+			Authorization struct {
+				Token string `json:"token"`
+			} `json:"authorization"`
+		} `json:"_meta"`
+	}
 	require.NoError(t, json.Unmarshal(req.Params, &params))
-	require.Equal(t, arguments, string(params["arguments"]), "metadata adapters must not decode or reorder tool content")
-	require.NotEmpty(t, params["_meta"])
+	require.Equal(t, arguments, string(params.Arguments))
+	require.Equal(t, schema.LatestProtocolVersion, params.Meta.Version)
+	require.Equal(t, "synthetic-token", params.Meta.Authorization.Token)
 }

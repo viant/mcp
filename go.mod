@@ -19,6 +19,8 @@ require (
 require (
 	github.com/blevesearch/snowballstem v0.9.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
 )
 
 require (
@@ -38,6 +40,8 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/tidwall/gjson v1.20.0
+	github.com/tidwall/sjson v1.2.5
 	github.com/tiendc/go-deepcopy v1.7.1
 	github.com/viant/parsly v0.3.3 // indirect
 	github.com/viant/tagly v0.4.2-0.20261028223500-81e046a19ef9 // indirect

@@ -909,6 +909,15 @@ github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXl
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
+github.com/tidwall/gjson v1.20.0 h1:+agJ3rEzKcCXKDKo0ml26UROcpcAlnZyjq+TjbY5Fto=
+github.com/tidwall/gjson v1.20.0/go.mod h1:V37/opeE/JbLUOfH0QTXiNez2l0RUjYUhpT4szFQAfc=
+github.com/tidwall/match v1.1.1 h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA=
+github.com/tidwall/match v1.1.1/go.mod h1:eRSPERbgtNPcGhD8UCthc6PmLEQXEWd3PRB5JTxsfmM=
+github.com/tidwall/pretty v1.2.0 h1:RWIZEg2iJ8/g6fDDYzMpobmaoGh5OLl4AXtGUGPcqCs=
+github.com/tidwall/pretty v1.2.0/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
+github.com/tidwall/sjson v1.2.5 h1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=
+github.com/tidwall/sjson v1.2.5/go.mod h1:Fvgq9kS/6ociJEDnK0Fk1cpYF4FIW6ZF7LAe+6jwd28=
 github.com/tiendc/go-deepcopy v1.7.1 h1:LnubftI6nYaaMOcaz0LphzwraqN8jiWTwm416sitff4=
 github.com/tiendc/go-deepcopy v1.7.1/go.mod h1:4bKjNC2r7boYOkD2IOuZpYjmlDdzjbpTRyCx+goBCJQ=
 github.com/viant/afs v1.30.0 h1:dbgVVSCPwGHUgpgkWJ5gdjKBqssT7OV7Z2M81CjwZEY=
@@ -920,10 +929,6 @@ github.com/viant/embedius v0.5.8-0.20261108015858-2dbb2e0a515a h1:eXzl4VD68u7buX
 github.com/viant/embedius v0.5.8-0.20261108015858-2dbb2e0a515a/go.mod h1:BkCf4YWLtLF079Px+UKzDzigdKQX5uEfCpsFOxUpkMs=
 github.com/viant/gosh v0.2.4 h1:kWy3gO00rXnX7Gi9k1jtIUKgzkreCNsJLfXzHKwENqw=
 github.com/viant/gosh v0.2.4/go.mod h1:KytU8mypZIFjjnIgrZAIFMpb0rGQWZmpCeg7kvsNbBY=
-github.com/viant/jsonrpc v0.25.1 h1:Qn/Z7jXogc1iR53KCuJLnqqgvvtmxmftiif2BCRnYV0=
-github.com/viant/jsonrpc v0.25.1/go.mod h1:b214Lo4zBwLqbu6Tf2bRlgQkFfPMBW5ap4qS+I3zcJ8=
-github.com/viant/jsonrpc v0.25.2-0.20261109161826-0c7edf60cfc5 h1:mMj+N/NPjaQpL/kfcBhUqJTG5644GIUlqKD3KeIZy0s=
-github.com/viant/jsonrpc v0.25.2-0.20261109161826-0c7edf60cfc5/go.mod h1:b214Lo4zBwLqbu6Tf2bRlgQkFfPMBW5ap4qS+I3zcJ8=
 github.com/viant/jsonrpc v0.25.2-0.20261113180529-6b4100cf455d h1:rZ4EhQLjomRw10oKUtWtWuTr1wPZQq+dOQBP1MD2WcA=
 github.com/viant/jsonrpc v0.25.2-0.20261113180529-6b4100cf455d/go.mod h1:b214Lo4zBwLqbu6Tf2bRlgQkFfPMBW5ap4qS+I3zcJ8=
 github.com/viant/mcp-protocol v0.19.2-0.20261029232114-446f89dc454b h1:BBQbDtI+VH2rBTAhnpwz8Edd/gbx6gV3A7qfLBr+3FA=

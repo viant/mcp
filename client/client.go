@@ -716,10 +716,7 @@ func (c *Client) withProtocolMeta(req *jsonrpc.Request) {
 	if loggingLevel != nil {
 		meta["io.modelcontextprotocol/logLevel"] = *loggingLevel
 	}
-	params["_meta"], _ = json.Marshal(meta)
-	if raw, err := json.Marshal(params); err == nil {
-		req.Params = raw
-	}
+	_ = conv.SetRequestMeta(req, params, meta)
 }
 
 // normalizeResultJSON implements the July rule that a missing resultType from
@@ -783,10 +780,7 @@ func withAuthMeta(req *jsonrpc.Request, token string) *jsonrpc.Request {
 		meta["authorization"] = auth
 	}
 	auth["token"] = token
-	params["_meta"], _ = json.Marshal(meta)
-	if raw, err := json.Marshal(params); err == nil {
-		req.Params = raw
-	}
+	_ = conv.SetRequestMeta(req, params, meta)
 	return req
 }
 
